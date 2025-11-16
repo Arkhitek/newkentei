@@ -335,23 +335,45 @@
                 if (user) {
                     console.log("✅ User logged in:", user.email || user.uid);
                     
-                    // Firestore接続を待機(最大5秒)
+                    // Firestore接続診断 (最大5秒) - 早期成功/分類ログ付き
                     console.log('🔍 Waiting for Firestore connection...');
                     let connectionReady = false;
+                    let lastError = null;
                     for (let i = 0; i < 10; i++) {
+                        // オフラインなら即座に待機へ (navigator.onLineは完全ではないがヒントになる)
+                        if (!navigator.onLine) {
+                            console.log(`🌐 Browser offline detected before attempt ${i + 1}`);
+                        }
                         try {
-                            await getDoc(doc(db, '_connection_test', 'test'));
+                            const pingSnap = await getDoc(doc(db, '_connection_test', 'ping'));
+                            // ドキュメントが存在しなくても snapshot 取得できれば接続成功とみなす
+                            console.log('✅ Firestore network reachable (doc exists:', pingSnap.exists(), ')');
                             connectionReady = true;
-                            console.log('✅ Firestore connection established');
                             break;
                         } catch (err) {
-                            console.log(`⏳ Connection attempt ${i + 1}/10...`);
+                            lastError = err;
+                            const code = err.code || 'unknown';
+                            const msg = err.message || String(err);
+                            // エラー分類
+                            if (code === 'unavailable') {
+                                console.log(`⏳ [${i + 1}/10] Network unavailable / backoff...`);
+                            } else if (code === 'permission-denied') {
+                                console.warn('⚠️ Firestore rules blocked access to _connection_test/ping. Treating as connected.');
+                                connectionReady = true; // ルール制限でもオンラインなら続行可
+                                break;
+                            } else if (msg.includes('offline')) {
+                                console.log(`⏳ [${i + 1}/10] Client offline...`);
+                            } else {
+                                console.log(`⏳ [${i + 1}/10] Non-network error (${code}) -> ${msg}`);
+                            }
                             await new Promise(resolve => setTimeout(resolve, 500));
                         }
                     }
-                    
                     if (!connectionReady) {
-                        console.warn('⚠️ Firestore connection timeout, proceeding anyway...');
+                        console.warn('⚠️ Firestore connection not confirmed after 5s. Proceeding with degraded mode.');
+                        if (lastError) {
+                            console.warn('ℹ️ Last connection error code:', lastError.code, 'message:', lastError.message);
+                        }
                     }
                     
                     currentUser = user;
@@ -375,6 +397,106 @@
         }
         })(); // 即座に実行
         
+        // ---------------------------------------------------------------------
+        // Firestore 接続診断ユーティリティ (debug=true のとき利用可能)
+        // ---------------------------------------------------------------------
+        async function diagnoseFirestore() {
+            if (!db) { console.error('❌ Firestore not initialized'); return; }
+            const report = { start: new Date().toISOString(), online: navigator.onLine, steps: [] };
+            console.group('🩺 Firestore Diagnose');
+            console.log('Environment online:', navigator.onLine);
+            // 1) 簡易 ping (存在しないドキュメント取得)
+            try {
+                const snap = await getDoc(doc(db, '_diagnostic', 'ping'));
+                report.steps.push({ name: 'ping', success: true, exists: snap.exists() });
+                console.log('✅ Ping success (exists:', snap.exists(), ')');
+            } catch (e) {
+                report.steps.push({ name: 'ping', success: false, code: e.code, message: e.message });
+                console.warn('⚠️ Ping failed:', e.code, e.message);
+            }
+            // 2) ルール確認 (読み取り許可がない場合 permission-denied になる)
+            try {
+                const testDocRef = doc(db, '_diagnostic', 'readTest');
+                const readSnap = await getDoc(testDocRef);
+                report.steps.push({ name: 'readTest', success: true, exists: readSnap.exists() });
+                console.log('✅ Read test success (exists:', readSnap.exists(), ')');
+            } catch (e) {
+                report.steps.push({ name: 'readTest', success: false, code: e.code, message: e.message });
+                console.warn('⚠️ Read test failed:', e.code, e.message);
+            }
+            // 3) 書き込みテスト (認証必須ルールの場合は失敗する)
+            try {
+                const writeRef = doc(db, '_diagnostic', 'writeTest');
+                await setDoc(writeRef, { ts: Date.now(), uid: currentUser?.uid || null });
+                report.steps.push({ name: 'writeTest', success: true });
+                console.log('✅ Write test success');
+            } catch (e) {
+                report.steps.push({ name: 'writeTest', success: false, code: e.code, message: e.message });
+                console.warn('⚠️ Write test failed:', e.code, e.message);
+            }
+            // 4) クエリテスト (最低限のインデックス状態確認)
+            try {
+                const qSnap = await getDoc(doc(db, '_diagnostic', 'ping')); // 再利用
+                report.steps.push({ name: 'querySimulated', success: true });
+                console.log('✅ Query simulated success');
+            } catch (e) {
+                report.steps.push({ name: 'querySimulated', success: false, code: e.code, message: e.message });
+                console.warn('⚠️ Query simulated failed:', e.code, e.message);
+            }
+            report.end = new Date().toISOString();
+            console.log('📝 Report:', report);
+            console.groupEnd();
+            return report;
+        }
+
+        // Debug パネル挿入（URLに ?debug=true がある場合）
+        (function attachDebugPanel(){
+            if (new URLSearchParams(location.search).get('debug') !== 'true') return;
+            const panel = document.createElement('div');
+            panel.style.cssText='position:fixed;bottom:0;right:0;background:#1f2937;color:#fff;font-size:12px;padding:10px;border-top-left-radius:6px;z-index:9999;width:240px;box-shadow:0 0 8px rgba(0,0,0,.3);';
+            panel.innerHTML = `
+                <div style="font-weight:bold;margin-bottom:6px;">🔧 Debug Panel</div>
+                <button id="dbg-diagnose" style="display:block;width:100%;margin-bottom:6px;background:#2563eb;color:#fff;padding:6px;border:none;border-radius:4px;cursor:pointer;">Diagnose Firestore</button>
+                <button id="dbg-refetch" style="display:block;width:100%;margin-bottom:6px;background:#10b981;color:#fff;padding:6px;border:none;border-radius:4px;cursor:pointer;">Force Refetch User</button>
+                <button id="dbg-clear-banner" style="display:block;width:100%;margin-bottom:6px;background:#f59e0b;color:#fff;padding:6px;border:none;border-radius:4px;cursor:pointer;">Clear Offline Banner</button>
+                <button id="dbg-show-banner" style="display:block;width:100%;background:#f87171;color:#fff;padding:6px;border:none;border-radius:4px;cursor:pointer;">Show Test Banner</button>
+                <div id="dbg-status" style="margin-top:8px;line-height:1.4;">Status: Ready</div>
+            `;
+            document.body.appendChild(panel);
+            const status = panel.querySelector('#dbg-status');
+            panel.querySelector('#dbg-diagnose').onclick = async () => {
+                status.textContent='Status: diagnosing...';
+                const r = await diagnoseFirestore();
+                status.textContent='Status: done (see console)';
+            };
+            panel.querySelector('#dbg-refetch').onclick = async () => {
+                if (!currentUser) { status.textContent='Status: no user'; return; }
+                status.textContent='Status: refetching user...';
+                await fetchUserData(currentUser.uid, currentUser.displayName);
+                status.textContent='Status: refetch complete';
+            };
+            panel.querySelector('#dbg-clear-banner').onclick = () => {
+                const b=document.getElementById('firestore-offline-banner');
+                if (b) { b.remove(); status.textContent='Status: banner removed'; } else { status.textContent='Status: no banner'; }
+            };
+            panel.querySelector('#dbg-show-banner').onclick = () => {
+                if (!document.getElementById('firestore-offline-banner')) {
+                    const banner = document.createElement('div');
+                    banner.id = 'firestore-offline-banner';
+                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
+                    banner.innerHTML = '⚠️ Firestore接続テストバナー (debug)';
+                    document.body.appendChild(banner);
+                    status.textContent='Status: test banner shown';
+                } else {
+                    status.textContent='Status: banner already exists';
+                }
+            };
+            console.log('🔧 Debug panel attached (debug=true)');
+        })();
+
+        // 後で定期的な軽量ヘルスチェック (60秒ごと) を追加可能
+        // setInterval(()=>{ if(currentUser){ getDoc(doc(db,'_connection_test','ping')).catch(()=>{}); } },60000);
+
         // ---------------------------------------------------------------------
         // 問題データ (CSVからのサンプル)
         // 本来は、これらのデータはFirebase Firestoreに保存し、
