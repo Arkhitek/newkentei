@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User profile documents
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Score records (ranking公開). Writes restricted to owner.
+    match /scores/{scoreId} {
+      allow read: if true; // ランキングは公開閲覧可
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.level is int
+        && request.resource.data.passed is bool
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.username is string;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Diagnostic collections (内部テスト用途)
+    match /_diagnostic/{docId} {
+      allow read, write: if request.auth != null; // 開発時のみ使用想定
+    }
+    match /_connection_test/{docId} {
+      allow read: if true; // 軽量接続ピン
+      allow write: if false; // 書き込み不要
+    }
+  }
+}
