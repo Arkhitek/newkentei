@@ -271,22 +271,6 @@
             enableIndexedDbPersistence
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // ---------------------------------------------------------------------
-        // ▼▼▼ ステップ 5 で、ここに自分のFirebase設定を貼り付ける ▼▼▼
-        // ---------------------------------------------------------------------
-const firebaseConfig = {
-  apiKey: "AIzaSyBd7Zall9oJ_kVsp927-I1Q3CZS0DjRO2Q",
-  authDomain: "kenchiku-kentei-app.firebaseapp.com",
-  projectId: "kenchiku-kentei-app",
-  storageBucket: "kenchiku-kentei-app.firebasestorage.app",
-  messagingSenderId: "957199081576",
-  appId: "1:957199081576:web:a8a6df2b6b9256c1b4dbdd",
-  measurementId: "G-6SC3Z0R93Q"
-};
-        // ---------------------------------------------------------------------
-        // ▲▲▲ ステップ 5 で、ここに自分のFirebase設定を貼り付ける ▲▲▲
-        // ---------------------------------------------------------------------
-
         // Firebaseの初期化
         let app, auth, db;
         let useEmulators = false; // エミュレータ使用フラグ
@@ -294,6 +278,17 @@ const firebaseConfig = {
         (async function initializeFirebase() {
             try {
                 console.log("Initializing Firebase...");
+                // VercelのAPIからFirebase設定を取得（環境変数から供給）
+                const res = await fetch('/api/firebase-config');
+                if (!res.ok) {
+                    throw new Error('Failed to load firebase config.');
+                }
+                const firebaseConfig = await res.json();
+                if (!firebaseConfig || !firebaseConfig.apiKey) {
+                    alert('Firebase設定が見つかりません。Vercelの環境変数を設定してください。');
+                    throw new Error('Missing firebase config');
+                }
+
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -347,11 +342,26 @@ const firebaseConfig = {
                     }
                 }, 2000);
             }
+
+            // 認証状態の監視（初期化後に登録）
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    console.log("✅ User logged in:", user.email || user.uid);
+                    currentUser = user;
+                    await fetchUserData(user.uid, user.displayName);
+                    setupMypage();
+                    showView('mypage-view');
+                    document.getElementById('user-display-name').textContent = userData.username;
+                } else {
+                    console.log("ℹ️ No user logged in");
+                    currentUser = null;
+                    userData = { username: "", clearedLevels: [], maxLevel: 5 };
+                    showView('auth-view');
+                }
+                showLoading(false);
+            });
         } catch (error) {
             console.error("Firebase initialization failed:", error);
-            if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-                alert("Firebaseが設定されていません。HTMLファイル内の `firebaseConfig` を、ご自身のFirebaseプロジェクトのものに置き換えてください。");
-            }
             // 初期化失敗時も認証画面を表示
             showView('auth-view');
             showLoading(false);
@@ -477,31 +487,7 @@ const firebaseConfig = {
         // ---------------------------------------------------------------------
         // 認証関連の処理
         // ---------------------------------------------------------------------
-
-        // 認証状態の監視（Firebase初期化失敗時にも固まらないようガード）
-        if (auth) {
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    console.log("✅ User logged in:", user.email || user.uid);
-                    currentUser = user;
-                    await fetchUserData(user.uid, user.displayName);
-                    setupMypage();
-                    showView('mypage-view');
-                    document.getElementById('user-display-name').textContent = userData.username;
-                } else {
-                    console.log("ℹ️ No user logged in");
-                    currentUser = null;
-                    userData = { username: "", clearedLevels: [], maxLevel: 5 };
-                    showView('auth-view');
-                }
-                showLoading(false);
-            });
-        } else {
-            console.error("Firebase Auth is not initialized. Falling back to auth view.");
-            // フォールバック：認証画面を表示してローディングを外す
-            showView('auth-view');
-            showLoading(false);
-        }
+        // 認証状態の監視はFirebase初期化完了後（initializeFirebase内）で登録します。
 
         // 念のためのフォールバック（ネットワーク不調など）
         // Firebase認証の初期化を待つため、3秒後に確認
