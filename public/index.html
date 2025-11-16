@@ -377,17 +377,33 @@
                     }
                     
                     currentUser = user;
-                    await fetchUserData(user.uid, user.displayName);
-                    setupMypage();
+                    // 先にビュー遷移してローディングを解除（Firestore遅延で待たされるのを防止）
                     showView('mypage-view');
-                    document.getElementById('user-display-name').textContent = userData.username;
+                    showLoading(false);
+                    document.getElementById('user-display-name').textContent = '読込中...';
+                    try {
+                        await fetchUserData(user.uid, user.displayName);
+                        setupMypage();
+                        document.getElementById('user-display-name').textContent = userData.username;
+                    } catch(e) {
+                        console.warn('⚠️ User data fetch failed after early view switch:', e.code || e.message);
+                        document.getElementById('user-display-name').textContent = user.displayName || 'ユーザー';
+                    }
                 } else {
                     console.log("ℹ️ No user logged in");
                     currentUser = null;
                     userData = { username: "", clearedLevels: [], maxLevel: 5 };
                     showView('auth-view');
+                    showLoading(false);
                 }
-                showLoading(false);
+                // 追加フェイルセーフ: もし何らかの理由で overlay が残っていたら除去
+                setTimeout(()=>{
+                    const overlay = document.getElementById('loading-overlay');
+                    if (overlay && overlay.classList.contains('active')) {
+                        console.warn('🚧 Failsafe hide loading overlay');
+                        overlay.classList.remove('active');
+                    }
+                }, 7000);
             });
         } catch (error) {
             console.error("Firebase initialization failed:", error);
@@ -492,6 +508,32 @@
                 }
             };
             console.log('🔧 Debug panel attached (debug=true)');
+        })();
+
+        // ---------------------------------------------------------------------
+        // 定期ヘルスチェック (60秒ごと) - 過剰ログ防止のため簡易出力
+        // debug=true または ?health=true が付いている場合のみ動作
+        // ---------------------------------------------------------------------
+        (function startHealthCheck(){
+            const params = new URLSearchParams(location.search);
+            if (!(params.get('debug') === 'true' || params.get('health') === 'true')) return;
+            let lastStatus = 'unknown';
+            setInterval(async () => {
+                if (!db) return;
+                try {
+                    await getDoc(doc(db,'_health','ping'));
+                    if (lastStatus !== 'ok') {
+                        console.log('🩺 Health: Firestore OK');
+                        lastStatus = 'ok';
+                    }
+                } catch(e) {
+                    if (lastStatus !== 'error') {
+                        console.warn('🩺 Health: Firestore error', e.code || e.message);
+                        lastStatus = 'error';
+                    }
+                }
+            }, 60000);
+            console.log('🩺 Health check started (interval 60s)');
         })();
 
         // 後で定期的な軽量ヘルスチェック (60秒ごと) を追加可能
@@ -611,6 +653,12 @@
         function showLoading(isLoading) {
             const overlay = document.getElementById('loading-overlay');
             overlay.classList.toggle('active', isLoading);
+            // 画面固着防止: 非表示時は display:none を明示 (古いブラウザ対策)
+            if (!isLoading) {
+                overlay.style.display = 'none';
+            } else {
+                overlay.style.display = 'flex';
+            }
         }
 
         // ---------------------------------------------------------------------
