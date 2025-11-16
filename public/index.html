@@ -443,18 +443,20 @@ const firebaseConfig = {
         }
 
         // 念のためのフォールバック（ネットワーク不調など）
+        // Firebase認証の初期化を待つため、3秒後に確認
         window.addEventListener('load', () => {
-            // 既に非表示なら何もしない
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay && overlay.classList.contains('active')) {
-                console.warn('Loader still active after window load. Forcing hide.');
-                showLoading(false);
-                // 認証画面へ誘導（他のビューが設定されていない場合）
-                const anyActive = document.querySelector('.view.active');
-                if (!anyActive || anyActive.id === 'loading-overlay') {
-                    showView('auth-view');
+            setTimeout(() => {
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay && overlay.classList.contains('active')) {
+                    console.warn('Loader still active 3s after window load. Forcing hide.');
+                    showLoading(false);
+                    // 認証画面へ誘導（他のビューが設定されていない場合）
+                    const anyActive = document.querySelector('.view.active');
+                    if (!anyActive || anyActive.id === 'loading-overlay') {
+                        showView('auth-view');
+                    }
                 }
-            }
+            }, 3000);
         });
 
         // Firestoreからユーザーデータを取得（または新規作成）
