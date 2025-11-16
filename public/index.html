@@ -191,7 +191,8 @@
             where,
             connectFirestoreEmulator,
             enableIndexedDbPersistence,
-            initializeFirestore
+            initializeFirestore,
+            limit
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebaseの初期化
@@ -829,28 +830,54 @@
         // クイズ関連の処理
         // ---------------------------------------------------------------------
 
-        // クイズ開始
-        function startQuiz(level) {
-            currentLevelAttempt = level; // 挑戦する級を保存
-            // 本来はここでFirestoreから問題を取得する
-            // const questions = await fetchQuestionsFromFirestore(level);
-            
-            // このデモでは、埋め込まれたデータストアから問題を取得
-            const questions = quizDataStore[String(level)] || [];
-            
-            // 問題をシャッフルし、10問に制限する（デモデータが少ない場合はそのまま）
-            // currentQuiz = shuffleArray(questions).slice(0, TOTAL_QUESTIONS_PER_QUIZ);
-            // デモではシャッフルせずにそのまま使う
-            currentQuiz = questions; 
-            
+        // Firestoreからランダム問題取得
+        async function fetchRandomQuestions(level, count = TOTAL_QUESTIONS_PER_QUIZ) {
+            if (!db) return [];
+            const seed = Math.floor(Math.random() * 1000000);
+            let constraints = [ where('classNo','==', level), where('randomSeed','>=', seed), orderBy('randomSeed'), limit(count) ];
+            let q1 = query(collection(db,'questions'), ...constraints);
+            let snap1;
+            try { snap1 = await getDocs(q1); } catch(e){ console.warn('⚠️ Random fetch (>=) failed:', e.code||e.message); return []; }
+            let docs = snap1.docs.map(d => d.data());
+            if (docs.length < count) {
+                const remain = count - docs.length;
+                const q2 = query(collection(db,'questions'), where('classNo','==', level), where('randomSeed','<', seed), orderBy('randomSeed'), limit(remain));
+                try { const snap2 = await getDocs(q2); docs = docs.concat(snap2.docs.map(d=>d.data())); } catch(e){ console.warn('⚠️ Random fetch (<) failed:', e.code||e.message); }
+            }
+            // 正規化: クイズUIが期待するキーに合わせる
+            return docs.map(d => ({
+                id: d.questionId,
+                level: d.classNo,
+                title: d.category,
+                image: d.assets?.questionImage || '',
+                question: d.questionText,
+                options: d.choices || [],
+                answer: d.answerIndex, // 0基準
+                explainImage: d.assets?.answerImage || '',
+                explanation: d.explanationText || ''
+            }));
+        }
+
+        // クイズ開始 (Firestore優先 / フォールバック)
+        async function startQuiz(level) {
+            currentLevelAttempt = level;
             currentQuestionIndex = 0;
             score = 0;
-            
-            if (currentQuiz.length === 0) {
-                alert(`${level}級の問題データを読み込めませんでした。`);
-                return;
+            showLoading(true);
+            let questions = [];
+            try {
+                questions = await fetchRandomQuestions(level);
+                if (!questions || questions.length === 0) {
+                    console.warn('⚠️ Firestore問題取得ゼロ。埋め込みデータへフォールバック');
+                    questions = quizDataStore[String(level)] || [];
+                }
+            } catch(e) {
+                console.warn('⚠️ Firestore問題取得失敗:', e.code||e.message);
+                questions = quizDataStore[String(level)] || [];
             }
-
+            currentQuiz = questions.slice(0, TOTAL_QUESTIONS_PER_QUIZ);
+            showLoading(false);
+            if (currentQuiz.length === 0) { alert(`${level}級の問題データを読み込めませんでした。`); return; }
             loadQuestion();
             showView('quiz-view');
         }

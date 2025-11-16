@@ -1,0 +1,322 @@
+[
+  {
+    "docId": "5-1",
+    "gid": 1,
+    "classNo": 5,
+    "setNo": 1,
+    "setName": "5級セット１",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-2",
+    "gid": 2,
+    "classNo": 5,
+    "setNo": 2,
+    "setName": "5級セット2",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-3",
+    "gid": 3,
+    "classNo": 5,
+    "setNo": 3,
+    "setName": "5級セット3",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-4",
+    "gid": 4,
+    "classNo": 5,
+    "setNo": 4,
+    "setName": "5級セット4",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-5",
+    "gid": 5,
+    "classNo": 5,
+    "setNo": 5,
+    "setName": "5級セット5",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-6",
+    "gid": 6,
+    "classNo": 5,
+    "setNo": 6,
+    "setName": "5級セット6",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-7",
+    "gid": 7,
+    "classNo": 5,
+    "setNo": 7,
+    "setName": "5級セット7",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-8",
+    "gid": 8,
+    "classNo": 5,
+    "setNo": 8,
+    "setName": "5級セット8",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-9",
+    "gid": 9,
+    "classNo": 5,
+    "setNo": 9,
+    "setName": "5級セット9",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "5-10",
+    "gid": 10,
+    "classNo": 5,
+    "setNo": 10,
+    "setName": "5級セット10",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-1",
+    "gid": 11,
+    "classNo": 4,
+    "setNo": 1,
+    "setName": "4級セット1",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-2",
+    "gid": 12,
+    "classNo": 4,
+    "setNo": 2,
+    "setName": "4級セット2",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-3",
+    "gid": 13,
+    "classNo": 4,
+    "setNo": 3,
+    "setName": "4級セット3",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-4",
+    "gid": 14,
+    "classNo": 4,
+    "setNo": 4,
+    "setName": "4級セット4",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-5",
+    "gid": 15,
+    "classNo": 4,
+    "setNo": 5,
+    "setName": "4級セット5",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-6",
+    "gid": 16,
+    "classNo": 4,
+    "setNo": 6,
+    "setName": "4級セット6",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "4-7",
+    "gid": 17,
+    "classNo": 4,
+    "setNo": 7,
+    "setName": "4級セット7",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-8",
+    "gid": 18,
+    "classNo": 3,
+    "setNo": 8,
+    "setName": "4級セット8",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-9",
+    "gid": 19,
+    "classNo": 3,
+    "setNo": 9,
+    "setName": "4級セット9",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-10",
+    "gid": 20,
+    "classNo": 3,
+    "setNo": 10,
+    "setName": "4級セット10",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-1",
+    "gid": 21,
+    "classNo": 3,
+    "setNo": 1,
+    "setName": "3級セット1",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-2",
+    "gid": 22,
+    "classNo": 3,
+    "setNo": 2,
+    "setName": "3級セット2",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-3",
+    "gid": 23,
+    "classNo": 3,
+    "setNo": 3,
+    "setName": "3級セット3",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-4",
+    "gid": 24,
+    "classNo": 3,
+    "setNo": 4,
+    "setName": "3級セット4",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-5",
+    "gid": 25,
+    "classNo": 3,
+    "setNo": 5,
+    "setName": "3級セット5",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-6",
+    "gid": 26,
+    "classNo": 3,
+    "setNo": 6,
+    "setName": "3級セット6",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-7",
+    "gid": 27,
+    "classNo": 3,
+    "setNo": 7,
+    "setName": "3級セット7",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-8",
+    "gid": 28,
+    "classNo": 3,
+    "setNo": 8,
+    "setName": "3級セット8",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-9",
+    "gid": 29,
+    "classNo": 3,
+    "setNo": 9,
+    "setName": "3級セット9",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "3-10",
+    "gid": 30,
+    "classNo": 3,
+    "setNo": 10,
+    "setName": "3級セット10",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-1",
+    "gid": 31,
+    "classNo": 2,
+    "setNo": 1,
+    "setName": "2級セット1",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-2",
+    "gid": 32,
+    "classNo": 2,
+    "setNo": 2,
+    "setName": "2級セット2",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-3",
+    "gid": 33,
+    "classNo": 2,
+    "setNo": 3,
+    "setName": "2級セット3",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-4",
+    "gid": 34,
+    "classNo": 2,
+    "setNo": 4,
+    "setName": "2級セット4",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-5",
+    "gid": 35,
+    "classNo": 2,
+    "setNo": 5,
+    "setName": "2級セット5",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-6",
+    "gid": 36,
+    "classNo": 2,
+    "setNo": 6,
+    "setName": "2級セット6",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-7",
+    "gid": 37,
+    "classNo": 2,
+    "setNo": 7,
+    "setName": "2級セット7",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-8",
+    "gid": 38,
+    "classNo": 2,
+    "setNo": 8,
+    "setName": "2級セット8",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-9",
+    "gid": 39,
+    "classNo": 2,
+    "setNo": 9,
+    "setName": "2級セット9",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  },
+  {
+    "docId": "2-10",
+    "gid": 40,
+    "classNo": 2,
+    "setNo": 10,
+    "setName": "2級セット10",
+    "createdAt": "2012-08-01T15:00:00.000Z"
+  }
+]

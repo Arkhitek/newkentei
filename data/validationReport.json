@@ -1,0 +1,19 @@
+{
+  "totalQuestions": 400,
+  "duplicateCount": 0,
+  "duplicates": [],
+  "missingQuestionImages": 348,
+  "missingAnswerImages": 348,
+  "sampleMissing": [
+    "5-6-6",
+    "5-5-7",
+    "5-6-8",
+    "5-7-9",
+    "5-8-12",
+    "5-8-13",
+    "5-4-14",
+    "5-6-15",
+    "5-3-16",
+    "5-7-17"
+  ]
+}
