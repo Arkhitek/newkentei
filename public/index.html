@@ -562,6 +562,12 @@ const firebaseConfig = {
                 // エラーメッセージを表示（オプション）
                 if (error.code === 'unavailable') {
                     console.warn('⚠️ Firestore is offline. Using default user data.');
+                    // ユーザーに通知
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
+                    banner.innerHTML = '⚠️ Firestoreに接続できません。<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;font-weight:bold;">Firebase Console</a>でFirestore Databaseを作成してください。';
+                    document.body.appendChild(banner);
+                    setTimeout(() => banner.remove(), 10000);
                 }
             }
         }
