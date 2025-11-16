@@ -38,11 +38,14 @@
             width: 100%;
             height: 100%;
             background-color: rgba(255, 255, 255, 0.8);
-            display: flex;
+            display: none; /* デフォルトは非表示 */
             justify-content: center;
             align-items: center;
             z-index: 9999;
             backdrop-filter: blur(5px);
+        }
+        #loading-overlay.active {
+            display: flex; /* activeクラスがある時だけ表示 */
         }
         /* ボタンの共通スタイル */
         .btn {
@@ -92,7 +95,7 @@
 <body>
 
     <!-- 全画面ローディング表示 -->
-    <div id="loading-overlay" class="view active">
+    <div id="loading-overlay" class="active">
         <div class="text-center">
             <div class="text-2xl font-bold text-blue-600">建築検定</div>
             <div class="mt-2 text-gray-700">読み込み中...</div>
