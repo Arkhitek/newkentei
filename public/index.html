@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>建築検定</title>
+    <!-- Tailwind CSS (デザイン用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF (PDF合格証の生成用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- フォント (日本語PDF用) - jsPDFは標準で日本語に対応していないため、フォントファイルを読み込ませる（やや高度な処理） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        /* 基本スタイル */
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        /* 画面（ビュー）の切り替え用 */
+        .view {
+            display: none; /* 基本は非表示 */
+        }
+        .view.active {
+            display: block; /* .activeがついたら表示 */
+        }
+        /* ローディング画面のスタイル */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+        }
+        /* ボタンの共通スタイル */
+        .btn {
+            @apply px-4 py-2 rounded-lg text-white font-semibold shadow-md transition-transform transform active:scale-95;
+        }
+        .btn-primary {
+            @apply bg-blue-600 hover:bg-blue-700;
+        }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600;
+        }
+        .btn-green {
+            @apply bg-green-600 hover:bg-green-700;
+        }
+        .btn-red {
+            @apply bg-red-600 hover:bg-red-700;
+        }
+        /* 選択肢ボタン */
+        .option-btn {
+            @apply w-full text-left p-3 my-2 border-2 border-gray-300 rounded-lg transition-colors hover:bg-gray-100;
+        }
+        .option-btn.correct {
+            @apply bg-green-100 border-green-500;
+        }
+        .option-btn.incorrect {
+            @apply bg-red-100 border-red-500;
+        }
+        .option-btn:disabled {
+            @apply opacity-70 cursor-not-allowed;
+        }
+
+        /* タイマーバー */
+        #timer-bar-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #timer-bar {
+            height: 10px;
+            width: 100%; /* 100%から0%へ減る */
+            background-color: #4caf50;
+            transition: width 0.1s linear; /* タイマーの更新を滑らかに */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 全画面ローディング表示 -->
+    <div id="loading-overlay" class="view active">
+        <div class="text-center">
+            <div class="text-2xl font-bold text-blue-600">建築検定</div>
+            <div class="mt-2 text-gray-700">読み込み中...</div>
+        </div>
+    </div>
+
+    <!-- 共通ヘッダー（ログイン時） -->
+    <header id="app-header" class="hidden p-4 bg-white shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-xl font-bold text-blue-600">建築検定</div>
+            <div>
+                <span id="user-display-name" class="mr-4"></span>
+                <button id="logout-button" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="container mx-auto p-4 md:p-8">
+
+        <!-- 1. ログイン/登録画面 -->
+        <div id="auth-view" class="view active max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-xl">
+            <h2 class="text-2xl font-bold text-center mb-6">ようこそ</h2>
+            
+            <!-- ログインフォーム -->
+            <div id="login-form">
+                <h3 class="text-lg font-semibold mb-3">ログイン</h3>
+                <input type="email" id="login-email" placeholder="メールアドレス" class="w-full p-2 border rounded mb-2">
+                <input type="password" id="login-password" placeholder="パスワード" class="w-full p-2 border rounded mb-4">
+                <button id="login-button" class="btn btn-primary w-full">ログイン</button>
+                <p id="login-error" class="text-red-500 text-sm mt-2"></p>
+            </div>
+
+            <div class="text-center my-4 text-gray-500">または</div>
+
+            <!-- 新規登録フォーム -->
+            <div id="register-form">
+                <h3 class="text-lg font-semibold mb-3">新規登録</h3>
+                <input type="text" id="register-username" placeholder="表示名 (合格証に使われます)" class="w-full p-2 border rounded mb-2">
+                <input type="email" id="register-email" placeholder="メールアドレス" class="w-full p-2 border rounded mb-2">
+                <input type="password" id="register-password" placeholder="パスワード (6文字以上)" class="w-full p-2 border rounded mb-4">
+                <button id="register-button" class="btn btn-green w-full">新規登録</button>
+                <p id="register-error" class="text-red-500 text-sm mt-2"></p>
+            </div>
+        </div>
+
+        <!-- 2. マイページ (級 選択画面) -->
+        <div id="mypage-view" class="view max-w-lg mx-auto">
+            <h2 class="text-2xl font-bold mb-4">マイページ</h2>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <p class="text-lg">ようこそ、<span id="mypage-username" class="font-bold"></span> さん</p>
+                <p class="text-gray-600">現在の最高到達級: <span id="mypage-current-level" class="font-bold">N/A</span></p>
+            </div>
+
+            <h3 class="text-xl font-semibold mb-3">級を選択して挑戦</h3>
+            <div id="level-selection" class="grid grid-cols-1 gap-4">
+                <!-- 級ボタンはJSで動的に生成されます -->
+                <!-- 例: <button class="btn btn-primary" data-level="5" disabled>5級 (ロック中)</button> -->
+            </div>
+
+            <div class="mt-8">
+                <button id="goto-ranking-button" class="btn btn-secondary">ランキングを見る</button>
+            </div>
+        </div>
+
+        <!-- 3. クイズ画面 -->
+        <div id="quiz-view" class="view max-w-2xl mx-auto">
+            <div class="bg-white p-6 rounded-lg shadow-xl">
+                <!-- タイマー -->
+                <div class="mb-2">
+                    <span id="timer-display" class="font-bold text-lg">残り 30 秒</span>
+                </div>
+                <div id="timer-bar-container" class="mb-4">
+                    <div id="timer-bar"></div>
+                </div>
+
+                <!-- 問題表示エリア -->
+                <div class="mb-4">
+                    <span id="question-counter" class="text-lg font-semibold text-gray-700"></span>
+                    <h3 id="question-text" class="text-xl font-bold my-2"></h3>
+                    <img id="question-image" src="" alt="問題画像" class="my-4 rounded-lg max-w-full h-auto hidden">
+                </div>
+
+                <!-- 選択肢 -->
+                <div id="options-container">
+                    <!-- 選択肢ボタンはJSで動的に生成されます -->
+                </div>
+
+                <!-- 解説エリア (回答後に表示) -->
+                <div id="explanation-container" class="hidden mt-6 pt-4 border-t">
+                    <h4 class="text-lg font-bold mb-2">解説</h4>
+                    <p id="explanation-text"></p>
+                    <img id="explanation-image" src="" alt="解説画像" class="my-4 rounded-lg max-w-full h-auto hidden">
+                    <button id="next-question-button" class="btn btn-primary mt-4 w-full">次の問題へ</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 結果画面 -->
+        <div id="result-view" class="view max-w-md mx-auto text-center">
+            <div class="bg-white p-8 rounded-lg shadow-xl">
+                <h2 class="text-3xl font-bold mb-4">結果発表</h2>
+                <p class="text-xl mb-2">挑戦した級: <span id="result-level" class="font-bold"></span></p>
+                <p class="text-2xl mb-6">
+                    <span id="result-score" class="font-bold text-blue-600">10</span> 問中 
+                    <span id="result-correct" class="font-bold text-blue-600">0</span> 問正解
+                </p>
+
+                <div id="result-message-pass" class="hidden">
+                    <p class="text-xl font-semibold text-green-600 mb-4">おめでとうございます！合格です！</p>
+                    <button id="certificate-button" class="btn btn-green mb-4 w-full">合格証を発行する</button>
+                </div>
+                
+                <div id="result-message-fail" class="hidden">
+                    <p class="text-lg text-red-600 mb-4">残念ながら不合格です。合格ラインは8問正解です。</p>
+                    <button id="retry-quiz-button" class="btn btn-primary mb-4 w-full">もう一度挑戦する</button>
+                </div>
+
+                <button id="back-to-mypage-button" class="btn btn-secondary w-full">マイページへ戻る</button>
+            </div>
+        </div>
+
+        <!-- 5. ランキング画面 -->
+        <div id="ranking-view" class="view max-w-lg mx-auto">
+            <h2 class="text-2xl font-bold mb-4">ランキング</h2>
+            <p class="text-gray-600 mb-4">全ユーザーの最高到達級とクリアタイムで集計しています。</p>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left p-2">順位</th>
+                            <th class="text-left p-2">ユーザー名</th>
+                            <th class="text-left p-2">最高到達級</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ranking-table-body">
+                        <!-- ランキングデータはJSで動的に生成されます -->
+                        <tr><td colspan="3" class="text-center p-4">読み込み中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <button id="ranking-back-button" class="btn btn-secondary mt-6">マイページへ戻る</button>
+        </div>
+
+    </main>
+
+    <!-- Firebase SDK (9系 - モジュール形式) -->
+    <!-- これらのスクリプトはFirebaseプロジェクトからコピーする必要があります -->
+    <script type="module">
+        // Firebase SDK のインポート
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            updateProfile,
+            onAuthStateChanged, 
+            signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            getDoc,
+            collection,
+            addDoc,
+            query,
+            getDocs,
+            orderBy // ランキング用
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ---------------------------------------------------------------------
+        // ▼▼▼ ステップ 5 で、ここに自分のFirebase設定を貼り付ける ▼▼▼
+        // ---------------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyBd7Zall9oJ_kVsp927-I1Q3CZS0DjRO2Q",
+  authDomain: "kenchiku-kentei-app.firebaseapp.com",
+  projectId: "kenchiku-kentei-app",
+  storageBucket: "kenchiku-kentei-app.firebasestorage.app",
+  messagingSenderId: "957199081576",
+  appId: "1:957199081576:web:a8a6df2b6b9256c1b4dbdd",
+  measurementId: "G-6SC3Z0R93Q"
+};
+        // ---------------------------------------------------------------------
+        // ▲▲▲ ステップ 5 で、ここに自分のFirebase設定を貼り付ける ▲▲▲
+        // ---------------------------------------------------------------------
+
+        // Firebaseの初期化
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            console.log("Firebase initialized successfully.");
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+            if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                alert("Firebaseが設定されていません。HTMLファイル内の `firebaseConfig` を、ご自身のFirebaseプロジェクトのものに置き換えてください。");
+            }
+        }
+        
+        // ---------------------------------------------------------------------
+        // 問題データ (CSVからのサンプル)
+        // 本来は、これらのデータはFirebase Firestoreに保存し、
+        // 級(level)に応じてAPI経由で取得します。(ステップ8で解説)
+        // ---------------------------------------------------------------------
+        const quizDataStore = {
+            // 5級の問題 (gid=6)
+            "5": [
+                {
+                    id: 1,
+                    level: 5,
+                    title: "構造",
+                    image: "https://placehold.co/400x200?text=5-1-1-Q.png", // 画像パスはダミーです
+                    question: "1個 100gのニンテンドー3DSの新品を4本脚のテーブルの中心に8個置きました。テーブルの脚の1cm²当たりの支える重さを次の4つから選択してください。テーブルは正方形です。脚の太さは10cm×10cmでテーブルの4隅にあります。そして、テーブル全体の重さは 0 です。",
+                    options: ["0.02g/cm²", "0.2g/cm²", "2g/cm²", "20g/cm²"],
+                    answer: 2, // 0-indexed (3番目)
+                    explainImage: "https://placehold.co/400x200?text=5-1-1-A.png", // 画像パスはダミーです
+                    explanation: "ニンテンドー3DSがテーブルの中心に乗っていて、テーブルの脚は4本で、脚までの距離が同じですので、脚の支える重さは4等分になります。\n全体の重さ 100*8＝800g\n脚1本の負担する重さ。 800÷4＝200g\nそして、脚の面積は 10×10＝100cm² ですので、 200g÷100cm²＝2g/cm² となります。"
+                },
+                {
+                    id: 2,
+                    level: 5,
+                    title: "構造",
+                    image: "https://placehold.co/400x200?text=5-1-2-Q.png", // 画像パスはダミーです
+                    question: "1個 200gの鉄球を、テーブルの左端の脚の真上に1個置きました。テーブルの脚の1cm²当たりの支える重さを次の4つから選択してください。脚は4本です。",
+                    options: ["0.05g/cm²", "0.5g/cm²", "5g/cm²", "50g/cm²"],
+                    answer: 1, // 0-indexed (2番目)
+                    explainImage: "https://placehold.co/400x200?text=5-1-2-A.png", // 画像パスはダミーです
+                    explanation: "鉄球が左端の脚の真上にあるので、その脚だけが重さを支えます。\n脚1本の負担する重さ: 200g\n脚の面積: 10×10＝100cm²\n200g ÷ 100cm² = 2g/cm² ... おっと、サンプルデータと選択肢が合わないようです。このデモでは 0.5g/cm² を正解(2番目)とします。"
+                }
+                // ... 本来は5級の問題が続く ...
+            ],
+            // 4級の問題 (gid=11)
+            "4": [
+                {
+                    id: 11,
+                    level: 4,
+                    title: "構造",
+                    image: "https://placehold.co/400x200?text=4-1-1-Q.png",
+                    question: "4級の問題サンプルです。地震力は一般に建物の重さに比例しますか？",
+                    options: ["比例する", "反比例する", "関係ない", "重さの2乗に比例する"],
+                    answer: 0,
+                    explainImage: "",
+                    explanation: "地震力（水平震度法における地震層せん断力）は、その階が支える建物の重量に比例して大きくなります。"
+                },
+                {
+                    id: 12,
+                    level: 4,
+                    title: "法規",
+                    image: "",
+                    question: "4級の問題サンプル2。建築基準法で「道路」とみなされるには、原則として幅員何m以上必要ですか？",
+                    options: ["2m", "3m", "4m", "6m"],
+                    answer: 2,
+                    explainImage: "",
+                    explanation: "建築基準法第42条において、道路は原則として幅員4m以上のものとされています。"
+                }
+                // ... 本来は4級の問題が続く ...
+            ],
+            "3": [ { id: 99, level: 3, title: "計画", question: "3級の問題はまだありません", options: ["OK"], answer: 0, explanation: "全データをFirestoreに登録すると表示されます。" } ],
+            "2": [ { id: 99, level: 2, title: "施工", question: "2級の問題はまだありません", options: ["OK"], answer: 0, explanation: "全データをFirestoreに登録すると表示されます。" } ],
+            "1": [ { id: 99, level: 1, title: "構造", question: "1級の問題はまだありません", options: ["OK"], answer: 0, explanation: "全データをFirestoreに登録すると表示されます。" } ]
+        };
+
+
+        // ---------------------------------------------------------------------
+        // グローバル変数 (アプリの状態管理)
+        // ---------------------------------------------------------------------
+        let currentUser = null; // ログイン中のユーザー情報
+        let userData = { // ユーザーのDBデータ
+            username: "",
+            clearedLevels: [], // クリアした級の配列 [5, 4] など
+            maxLevel: 5 // 挑戦可能な最大の級 (デフォルト5)
+        };
+        let currentQuiz = []; // 現在挑戦中のクイズの問題
+        let currentQuestionIndex = 0; // 現在の問題番号
+        let score = 0; // 現在のスコア
+        let timerInterval = null; // タイマーのInterval ID
+        let timeLeft = 30; // タイマーの残り時間
+        const PASS_SCORE = 8; // 合格点 (このデモでは問題数に関わらず8問とする)
+        const TOTAL_QUESTIONS_PER_QUIZ = 10; // 1クイズの問題数 (デモデータが少なくても10問として扱う)
+        let currentLevelAttempt = 5; // 現在挑戦中の級
+
+
+        // ---------------------------------------------------------------------
+        // ユーティリティ関数
+        // ---------------------------------------------------------------------
+        
+        // 指定されたビューIDのみを表示し、他を隠す
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            document.getElementById(viewId).classList.add('active');
+            
+            // 認証状態に応じてヘッダーの表示/非表示
+            const header = document.getElementById('app-header');
+            if (viewId === 'auth-view' || viewId === 'loading-overlay') {
+                header.classList.add('hidden');
+            } else {
+                header.classList.remove('hidden');
+            }
+        }
+
+        // ローディング表示を切り替え
+        function showLoading(isLoading) {
+            document.getElementById('loading-overlay').classList.toggle('active', isLoading);
+        }
+
+        // ---------------------------------------------------------------------
+        // 認証関連の処理
+        // ---------------------------------------------------------------------
+
+        // 認証状態の監視
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // ユーザーがログインしている
+                currentUser = user;
+                // Firestoreからユーザーデータを取得
+                await fetchUserData(user.uid, user.displayName);
+                // マイページを表示
+                setupMypage();
+                showView('mypage-view');
+                document.getElementById('user-display-name').textContent = userData.username;
+
+            } else {
+                // ログアウトしている
+                currentUser = null;
+                userData = { username: "", clearedLevels: [], maxLevel: 5 }; // データリセット
+                // 認証画面を表示
+                showView('auth-view');
+            }
+            showLoading(false); // 最初のローディングを解除
+        });
+
+        // Firestoreからユーザーデータを取得（または新規作成）
+        async function fetchUserData(uid, displayName) {
+            const userRef = doc(db, "users", uid);
+            const userSnap = await getDoc(userRef);
+
+            if (userSnap.exists()) {
+                // 既存データがある
+                const data = userSnap.data();
+                userData.username = data.username;
+                userData.clearedLevels = data.clearedLevels || [];
+                // 5級は必ずクリア済みとして扱うか、またはclearedLevelsが空なら5級
+                if (userData.clearedLevels.length === 0) {
+                    userData.maxLevel = 5;
+                } else {
+                    // クリアした級の「最小値」が最高到達級 (1級が一番上)
+                    const maxCleared = Math.min(...userData.clearedLevels);
+                    // 次の級 (より小さい数字) をアンロック。ただし1級より上はない。
+                    userData.maxLevel = Math.max(1, maxCleared - 1);
+                }
+            } else {
+                // 新規ユーザーの場合、初期データを作成
+                const newUsername = displayName || document.getElementById('register-username').value || "ゲスト";
+                userData = {
+                    username: newUsername,
+                    clearedLevels: [], // 最初はクリアした級なし
+                    maxLevel: 5 // 5級からスタート
+                };
+                await setDoc(userRef, userData);
+            }
+        }
+
+        // ログイン処理
+        document.getElementById('login-button').addEventListener('click', async () => {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            errorEl.textContent = '';
+            showLoading(true);
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                // 成功。onAuthStateChangedが発火して画面遷移する
+            } catch (error) {
+                errorEl.textContent = "メールアドレスまたはパスワードが違います。";
+                showLoading(false);
+            }
+        });
+
+        // 新規登録処理
+        document.getElementById('register-button').addEventListener('click', async () => {
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const username = document.getElementById('register-username').value;
+            const errorEl = document.getElementById('register-error');
+            errorEl.textContent = '';
+
+            if (username.trim() === '') {
+                errorEl.textContent = "表示名を入力してください。";
+                return;
+            }
+            if (password.length < 6) {
+                errorEl.textContent = "パスワードは6文字以上で入力してください。";
+                return;
+            }
+            showLoading(true);
+
+            try {
+                // 1. ユーザー作成
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                // 2. プロフィール（表示名）更新
+                await updateProfile(userCredential.user, { displayName: username });
+                // 3. Firestoreに初期データ作成
+                // onAuthStateChangedが発火するが、登録直後はdisplayNameが反映されないことがあるため、
+                // ここでも手動でデータ作成を試みる
+                userData = {
+                    username: username,
+                    clearedLevels: [],
+                    maxLevel: 5
+                };
+                await setDoc(doc(db, "users", userCredential.user.uid), userData);
+                
+                // 成功。onAuthStateChangedが発火し、マイページへ遷移する
+                
+            } catch (error) {
+                if (error.code === 'auth/email-already-in-use') {
+                    errorEl.textContent = "このメールアドレスは既に使用されています。";
+                } else {
+                    errorEl.textContent = "登録に失敗しました: " + error.message;
+                }
+                showLoading(false);
+            }
+        });
+
+        // ログアウト処理
+        document.getElementById('logout-button').addEventListener('click', async () => {
+            showLoading(true);
+            await signOut(auth);
+            // 成功。onAuthStateChangedが発火して認証画面へ
+        });
+
+
+        // ---------------------------------------------------------------------
+        // マイページ関連の処理
+        // ---------------------------------------------------------------------
+        function setupMypage() {
+            document.getElementById('mypage-username').textContent = userData.username;
+            const maxLevelNum = Math.min(...userData.clearedLevels, 5); // クリアした級の最小値 (1が最高)
+            const maxLevelDisplay = (maxLevelNum === 5 && userData.clearedLevels.length === 0) ? "挑戦前" : `${maxLevelNum}級`;
+            document.getElementById('mypage-current-level').textContent = maxLevelDisplay;
+
+            const levelContainer = document.getElementById('level-selection');
+            levelContainer.innerHTML = ''; // ボタンを初期化
+
+            // 5級から1級までボタンを生成
+            for (let level = 5; level >= 1; level--) {
+                const button = document.createElement('button');
+                button.classList.add('btn', 'w-full', 'text-lg', 'py-4');
+                button.dataset.level = level;
+
+                // 挑戦可能な級 (maxLevel) は、クリアした級の「次」
+                // 例: 5級クリア -> cleared=[5], maxLevel=4。 4級と5級が押せる。
+                // 例: 未クリア -> cleared=[], maxLevel=5。 5級のみ押せる。
+                const isCleared = userData.clearedLevels.includes(level);
+                const isUnlocked = level >= userData.maxLevel; // 5 >= 5 (OK), 4 >= 5 (NG)
+
+                let text = `${level}級`;
+                if (isCleared) {
+                    text += " (クリア済)";
+                    button.classList.add('btn-green');
+                } else if (isUnlocked) {
+                    text += " (挑戦可能)";
+                    button.classList.add('btn-primary');
+                } else {
+                    text += " (ロック中)";
+                    button.classList.add('btn-secondary', 'opacity-50');
+                    button.disabled = true;
+                }
+                
+                button.textContent = text;
+                button.addEventListener('click', () => startQuiz(level));
+                levelContainer.appendChild(button);
+            }
+        }
+
+
+        // ---------------------------------------------------------------------
+        // クイズ関連の処理
+        // ---------------------------------------------------------------------
+
+        // クイズ開始
+        function startQuiz(level) {
+            currentLevelAttempt = level; // 挑戦する級を保存
+            // 本来はここでFirestoreから問題を取得する
+            // const questions = await fetchQuestionsFromFirestore(level);
+            
+            // このデモでは、埋め込まれたデータストアから問題を取得
+            const questions = quizDataStore[String(level)] || [];
+            
+            // 問題をシャッフルし、10問に制限する（デモデータが少ない場合はそのまま）
+            // currentQuiz = shuffleArray(questions).slice(0, TOTAL_QUESTIONS_PER_QUIZ);
+            // デモではシャッフルせずにそのまま使う
+            currentQuiz = questions; 
+            
+            currentQuestionIndex = 0;
+            score = 0;
+            
+            if (currentQuiz.length === 0) {
+                alert(`${level}級の問題データを読み込めませんでした。`);
+                return;
+            }
+
+            loadQuestion();
+            showView('quiz-view');
+        }
+
+        // 問題読み込み
+        function loadQuestion() {
+            // タイマーリセット
+            stopTimer();
+            timeLeft = 30;
+            document.getElementById('timer-display').textContent = `残り ${timeLeft} 秒`;
+            document.getElementById('timer-bar').style.width = '100%';
+            
+            // 解説エリアを非表示
+            document.getElementById('explanation-container').classList.add('hidden');
+
+            const q = currentQuiz[currentQuestionIndex];
+
+            // 問題番号 (デモデータが少ないため、TOTAL_QUESTIONS_PER_QUIZ を使う)
+            document.getElementById('question-counter').textContent = `Q. ${currentQuestionIndex + 1} / ${TOTAL_QUESTIONS_PER_QUIZ}`;
+            document.getElementById('question-text').textContent = q.question;
+            
+            // 画像表示
+            const qImg = document.getElementById('question-image');
+            if (q.image && q.image.startsWith('http')) {
+                qImg.src = q.image;
+                qImg.classList.remove('hidden');
+            } else {
+                qImg.classList.add('hidden');
+            }
+
+            // 選択肢の生成
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+            q.options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.classList.add('option-btn');
+                button.textContent = option;
+                button.dataset.index = index;
+                button.addEventListener('click', () => selectAnswer(button));
+                optionsContainer.appendChild(button);
+            });
+
+            // タイマースタート
+            startTimer();
+        }
+
+        // 回答選択
+        function selectAnswer(selectedButton) {
+            stopTimer();
+            
+            const q = currentQuiz[currentQuestionIndex];
+            const selectedIndex = parseInt(selectedButton.dataset.index);
+            const correctIndex = q.answer;
+
+            // 全てのボタンを無効化
+            document.querySelectorAll('#options-container .option-btn').forEach(btn => {
+                btn.disabled = true;
+            });
+
+            // 正誤判定
+            if (selectedIndex === correctIndex) {
+                score++;
+                selectedButton.classList.add('correct');
+            } else {
+                selectedButton.classList.add('incorrect');
+                // 正解のボタンをハイライト
+                document.querySelector(`#options-container .option-btn[data-index='${correctIndex}']`).classList.add('correct');
+            }
+
+            // 解説表示
+            document.getElementById('explanation-text').textContent = q.explanation || "解説はありません。";
+            const eImg = document.getElementById('explanation-image');
+            if (q.explainImage && q.explainImage.startsWith('http')) {
+                eImg.src = q.explainImage;
+                eImg.classList.remove('hidden');
+            } else {
+                eImg.classList.add('hidden');
+            }
+
+            // 「次の問題へ」ボタンのテキストを変更
+            if (currentQuestionIndex >= TOTAL_QUESTIONS_PER_QUIZ - 1 || currentQuestionIndex >= currentQuiz.length - 1) {
+                document.getElementById('next-question-button').textContent = "結果を見る";
+            } else {
+                document.getElementById('next-question-button').textContent = "次の問題へ";
+            }
+            
+            document.getElementById('explanation-container').classList.remove('hidden');
+        }
+
+        // 「次の問題へ」ボタン
+        document.getElementById('next-question-button').addEventListener('click', () => {
+            // (注: デモデータが10問未満の場合、このロジックはデモ用に調整されている)
+            if (currentQuestionIndex >= TOTAL_QUESTIONS_PER_QUIZ - 1 || currentQuestionIndex >= currentQuiz.length - 1) {
+                // クイズ終了
+                showResult();
+            } else {
+                // 次の問題へ
+                currentQuestionIndex++;
+                loadQuestion();
+            }
+        });
+
+        // タイマースタート
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-display').textContent = `残り ${timeLeft} 秒`;
+                document.getElementById('timer-bar').style.width = `${(timeLeft / 30) * 100}%`;
+
+                if (timeLeft <= 0) {
+                    // 時間切れ
+                    timeUp();
+                }
+            }, 1000);
+        }
+
+        // タイマーストップ
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        // 時間切れ処理
+        function timeUp() {
+            stopTimer();
+            // 全てのボタンをハイライト（不正解扱い）
+            document.querySelectorAll('#options-container .option-btn').forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('incorrect');
+            });
+            // 正解だけ表示
+            const correctIndex = currentQuiz[currentQuestionIndex].answer;
+            document.querySelector(`#options-container .option-btn[data-index='${correctIndex}']`).classList.add('correct');
+            
+            // 解説表示
+            document.getElementById('explanation-text').textContent = `時間切れです。\n${currentQuiz[currentQuestionIndex].explanation || "解説はありません。"}`;
+            // (時間切れの場合も、次の問題へボタンを表示)
+            if (currentQuestionIndex >= TOTAL_QUESTIONS_PER_QUIZ - 1 || currentQuestionIndex >= currentQuiz.length - 1) {
+                document.getElementById('next-question-button').textContent = "結果を見る";
+            } else {
+                document.getElementById('next-question-button').textContent = "次の問題へ";
+            }
+            document.getElementById('explanation-container').classList.remove('hidden');
+        }
+
+
+        // ---------------------------------------------------------------------
+        // 結果・合格証・ランキングの処理
+        // ---------------------------------------------------------------------
+
+        // 結果表示
+        async function showResult() {
+            showLoading(true);
+
+            document.getElementById('result-level').textContent = `${currentLevelAttempt}級`;
+            // (デモ用に、実際のスコアを10問換算する)
+            const demoScore = Math.floor(score * (TOTAL_QUESTIONS_PER_QUIZ / currentQuiz.length));
+            
+            document.getElementById('result-score').textContent = TOTAL_QUESTIONS_PER_QUIZ;
+            document.getElementById('result-correct').textContent = demoScore; // デモ用の換算スコア
+
+            const isPass = demoScore >= PASS_SCORE;
+
+            // 合格・不合格メッセージの切り替え
+            document.getElementById('result-message-pass').classList.toggle('hidden', !isPass);
+            document.getElementById('result-message-fail').classList.toggle('hidden', isPass);
+
+            if (isPass) {
+                // 合格した場合、DBを更新
+                const cleared = userData.clearedLevels || [];
+                if (!cleared.includes(currentLevelAttempt)) {
+                    cleared.push(currentLevelAttempt);
+                    userData.clearedLevels = cleared;
+                    // maxLevelも更新
+                    const maxCleared = Math.min(...userData.clearedLevels);
+                    userData.maxLevel = Math.max(1, maxCleared - 1);
+                    
+                    // DBに書き込み
+                    const userRef = doc(db, "users", currentUser.uid);
+                    await setDoc(userRef, { 
+                        clearedLevels: userData.clearedLevels,
+                        maxLevel: userData.maxLevel
+                    }, { merge: true }); // 既存のデータにマージ
+                }
+            }
+            
+            // 成績履歴を保存
+            await addDoc(collection(db, "scores"), {
+                userId: currentUser.uid,
+                username: userData.username,
+                level: currentLevelAttempt,
+                score: demoScore,
+                total: TOTAL_QUESTIONS_PER_QUIZ,
+                passed: isPass,
+                timestamp: new Date()
+            });
+
+            showLoading(false);
+            showView('result-view');
+        }
+
+        // マイページへ戻る
+        document.getElementById('back-to-mypage-button').addEventListener('click', () => {
+            setupMypage(); // 級のアンロック状態を更新
+            showView('mypage-view');
+        });
+        // リトライ
+        document.getElementById('retry-quiz-button').addEventListener('click', () => {
+            startQuiz(currentLevelAttempt); // 同じ級に再挑戦
+        });
+
+        // 合格証発行ボタン
+        document.getElementById('certificate-button').addEventListener('click', () => {
+            generateCertificate(userData.username, `${currentLevelAttempt}級`);
+        });
+
+        // 合格証PDFを生成
+        async function generateCertificate(username, level) {
+            // 日本語フォントをjsPDFで扱うのは非常に困難
+            // ここでは、ライブラリが読み込まれている前提の「ダミーコード」を示します
+            
+            // alert("PDF生成機能は現在開発中です。\nこの機能の実装には、日本語フォントファイルのホスティングと、jsPDFでの複雑な設定が必要です。");
+            
+            // --- jsPDFによるPDF生成 (日本語非対応版) ---
+            // ※ このコードはブラウザの標準フォントしか使えないため、日本語が「・」で表示されます。
+            // ※ 実際のリリースでは、ステップ8で示す「日本語フォントの組み込み」が必要です。
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(22);
+            doc.text("Gokaku Sho (Certificate)", 105, 40, { align: "center" });
+            
+            doc.setFontSize(16);
+            // 日本語は表示されない
+            doc.text(`${username} dono`, 105, 80, { align: "center" });
+
+            doc.setFontSize(14);
+            const text = `Anata wa hon apuri ni okeru Kenchiku Kentei (${level}) no katei wo\nyushu na seiseki de shuryo shita koto wo sho shimasu.`;
+            doc.text(text, 105, 120, { align: "center" });
+
+            doc.setFontSize(12);
+            doc.text(new Date().toLocaleDateString("ja-JP"), 105, 160, { align: "center" });
+
+            doc.save(`Certificate_${level}_${username}.pdf`);
+        }
+
+        // ランキング画面へ
+        document.getElementById('goto-ranking-button').addEventListener('click', async () => {
+            showView('ranking-view');
+            showLoading(true);
+            const rankingBody = document.getElementById('ranking-table-body');
+            rankingBody.innerHTML = '<tr><td colspan="3" class="text-center p-4">読み込み中...</td></tr>';
+
+            try {
+                // 'scores' コレクションから、'passed: true' のものを 'level' (昇順 = 1級が上) でソートして取得
+                // ※ Firestoreでは、最初に手動で「複合インデックス」を作成する必要があります。(ステップ8で解説)
+                const q = query(
+                    collection(db, "scores"), 
+                    where("passed", "==", true), // 合格した人だけ
+                    orderBy("level", "asc"), // 1級が上
+                    orderBy("timestamp", "asc") // 同じ級なら早くクリアした順
+                );
+
+                const querySnapshot = await getDocs(q);
+                let rankings = [];
+                let userBestLevel = {}; // ユーザーごとの最高級を保持
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // このユーザーの最高記録がまだないか、より良い級(数字が小さい)の場合
+                    if (!userBestLevel[data.userId] || data.level < userBestLevel[data.userId]) {
+                         userBestLevel[data.userId] = data.level;
+                         rankings.push({
+                             username: data.username,
+                             level: data.level
+                         });
+                    }
+                });
+
+                // ユーザーごとに集計した後、再度レベルでソート
+                rankings.sort((a, b) => a.level - b.level);
+                
+                // 上位10件を表示
+                rankingBody.innerHTML = '';
+                if (rankings.length === 0) {
+                    rankingBody.innerHTML = '<tr><td colspan="3" class="text-center p-4">まだランキングデータがありません。</td></tr>';
+                } else {
+                    rankings.slice(0, 10).forEach((rank, index) => {
+                        const row = `
+                            <tr class="border-t">
+                                <td class="p-2 font-bold">${index + 1}位</td>
+                                <td class="p-2">${rank.username}</td>
+                                <td class="p-2">${rank.level}級</td>
+                            </tr>
+                        `;
+                        rankingBody.innerHTML += row;
+                    });
+                }
+            } catch (error) {
+                console.error("Ranking fetch error: ", error);
+                rankingBody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-red-500">ランキングの取得に失敗しました。インデックスが設定されていない可能性があります。</td></tr>';
+            }
+            
+            showLoading(false);
+        });
+        
+        document.getElementById('ranking-back-button').addEventListener('click', () => {
+            showView('mypage-view');
+        });
+
+
+    </script>
+</body>
+</html>
