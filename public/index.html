@@ -256,53 +256,43 @@
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     console.log("✅ User logged in:", user.email || user.uid);
-                    
-                    // Firestore接続診断 (最大5秒) - 早期成功/分類ログ付き
-                    console.log('🔍 Waiting for Firestore connection...');
-                    let connectionReady = false;
-                    let lastError = null;
-                    for (let i = 0; i < 10; i++) {
-                        // オフラインなら即座に待機へ (navigator.onLineは完全ではないがヒントになる)
-                        if (!navigator.onLine) {
-                            console.log(`🌐 Browser offline detected before attempt ${i + 1}`);
-                        }
-                        try {
-                            const pingSnap = await getDoc(doc(db, '_connection_test', 'ping'));
-                            // ドキュメントが存在しなくても snapshot 取得できれば接続成功とみなす
-                            console.log('✅ Firestore network reachable (doc exists:', pingSnap.exists(), ')');
-                            connectionReady = true;
-                            break;
-                        } catch (err) {
-                            lastError = err;
-                            const code = err.code || 'unknown';
-                            const msg = err.message || String(err);
-                            // エラー分類
-                            if (code === 'unavailable') {
-                                console.log(`⏳ [${i + 1}/10] Network unavailable / backoff...`);
-                            } else if (code === 'permission-denied') {
-                                console.warn('⚠️ Firestore rules blocked access to _connection_test/ping. Treating as connected.');
-                                connectionReady = true; // ルール制限でもオンラインなら続行可
-                                break;
-                            } else if (msg.includes('offline')) {
-                                console.log(`⏳ [${i + 1}/10] Client offline...`);
-                            } else {
-                                console.log(`⏳ [${i + 1}/10] Non-network error (${code}) -> ${msg}`);
-                            }
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                        }
-                    }
-                    if (!connectionReady) {
-                        console.warn('⚠️ Firestore connection not confirmed after 5s. Proceeding with degraded mode.');
-                        if (lastError) {
-                            console.warn('ℹ️ Last connection error code:', lastError.code, 'message:', lastError.message);
-                        }
-                    }
-                    
-                    currentUser = user;
-                    // 先にビュー遷移してローディングを解除（Firestore遅延で待たされるのを防止）
+                    // まずUIを即時解放
                     showView('mypage-view');
                     showLoading(false);
-                    document.getElementById('user-display-name').textContent = '読込中...';
+                    document.getElementById('user-display-name').textContent = '接続確認中...';
+                    // Firestore接続診断は非同期でバックグラウンド実行
+                    (async () => {
+                        console.log('🔍 (bg) Checking Firestore connection...');
+                        let lastError = null;
+                        for (let i = 0; i < 10; i++) {
+                            if (!navigator.onLine) {
+                                console.log(`🌐 Offline (attempt ${i + 1})`);
+                            }
+                            try {
+                                const pingSnap = await getDoc(doc(db, '_connection_test', 'ping'));
+                                console.log('✅ Firestore reachable (exists:', pingSnap.exists(), ')');
+                                return; // 成功
+                            } catch (err) {
+                                lastError = err;
+                                const code = err.code || 'unknown';
+                                const msg = err.message || String(err);
+                                if (code === 'permission-denied') {
+                                    console.warn('⚠️ Rules deny ping but treating as connected.');
+                                    return;
+                                }
+                                if (code === 'unavailable') {
+                                    console.log(`⏳ Net unavailable (${i + 1}/10)`);
+                                } else if (msg.includes('offline')) {
+                                    console.log(`⏳ Client offline (${i + 1}/10)`);
+                                } else {
+                                    console.log(`⏳ Non-network error ${code} (${i + 1}/10)`);
+                                }
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        }
+                        console.warn('⚠️ Firestore connection not confirmed (bg). Last error:', lastError?.code, lastError?.message);
+                    })();
+                    currentUser = user;
                     try {
                         await fetchUserData(user.uid, user.displayName);
                         setupMypage();
