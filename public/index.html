@@ -288,23 +288,32 @@ const firebaseConfig = {
 
         // Firebaseの初期化
         let app, auth, db;
+        let useEmulators = false; // エミュレータ使用フラグ
+        
         try {
             console.log("Initializing Firebase...");
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
             console.log("Firebase initialized successfully.");
-            console.log("Auth object:", auth);
-            console.log("DB object:", db);
-            // ローカル開発（localhost/127.0.0.1）時はエミュレータへ接続
-            if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+            
+            // ローカル開発時のエミュレータ接続（URLパラメータで制御可能）
+            const urlParams = new URLSearchParams(window.location.search);
+            const forceEmulator = urlParams.get('emulator') === 'true';
+            
+            if (forceEmulator && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
                 try {
-                    connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+                    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
                     connectFirestoreEmulator(db, '127.0.0.1', 8080);
-                    console.log('Connected to Firebase Emulators (Auth:9099, Firestore:8080).');
+                    useEmulators = true;
+                    console.log('✅ Connected to Firebase Emulators (Auth:9099, Firestore:8080).');
+                    console.log('💡 Using LOCAL emulator data (not production)');
                 } catch (e) {
-                    console.warn('Failed to connect emulators:', e);
+                    console.warn('⚠️ Failed to connect emulators (using production instead):', e.message);
                 }
+            } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                console.log('💡 Running on localhost but using PRODUCTION Firebase.');
+                console.log('💡 To use emulators, add ?emulator=true to URL');
             }
         } catch (error) {
             console.error("Firebase initialization failed:", error);
@@ -405,18 +414,14 @@ const firebaseConfig = {
         
         // 指定されたビューIDのみを表示し、他を隠す
         function showView(viewId) {
-            console.log(`showView called with: ${viewId}`);
             const targetView = document.getElementById(viewId);
-            console.log(`Target view element:`, targetView);
             
             document.querySelectorAll('.view').forEach(view => {
                 view.classList.remove('active');
-                console.log(`Removed active from: ${view.id}`);
             });
             
             if (targetView) {
                 targetView.classList.add('active');
-                console.log(`Added active to: ${viewId}`);
             } else {
                 console.error(`View with id '${viewId}' not found!`);
             }
@@ -428,17 +433,12 @@ const firebaseConfig = {
             } else {
                 header.classList.remove('hidden');
             }
-            console.log(`showView completed for: ${viewId}`);
         }
 
         // ローディング表示を切り替え
         function showLoading(isLoading) {
-            console.log(`showLoading called with: ${isLoading}`);
             const overlay = document.getElementById('loading-overlay');
-            console.log(`Loading overlay element:`, overlay);
-            console.log(`Overlay classes before:`, overlay?.classList.toString());
             overlay.classList.toggle('active', isLoading);
-            console.log(`Overlay classes after:`, overlay?.classList.toString());
         }
 
         // ---------------------------------------------------------------------
@@ -447,23 +447,20 @@ const firebaseConfig = {
 
         // 認証状態の監視（Firebase初期化失敗時にも固まらないようガード）
         if (auth) {
-            console.log("Setting up onAuthStateChanged listener...");
             onAuthStateChanged(auth, async (user) => {
-                console.log("onAuthStateChanged callback fired! User:", user);
                 if (user) {
-                    console.log("User is logged in:", user.uid);
+                    console.log("✅ User logged in:", user.email || user.uid);
                     currentUser = user;
                     await fetchUserData(user.uid, user.displayName);
                     setupMypage();
                     showView('mypage-view');
                     document.getElementById('user-display-name').textContent = userData.username;
                 } else {
-                    console.log("User is not logged in, showing auth view");
+                    console.log("ℹ️ No user logged in");
                     currentUser = null;
                     userData = { username: "", clearedLevels: [], maxLevel: 5 };
                     showView('auth-view');
                 }
-                console.log("Hiding loading screen...");
                 showLoading(false);
             });
         } else {
@@ -492,32 +489,47 @@ const firebaseConfig = {
 
         // Firestoreからユーザーデータを取得（または新規作成）
         async function fetchUserData(uid, displayName) {
-            const userRef = doc(db, "users", uid);
-            const userSnap = await getDoc(userRef);
+            try {
+                const userRef = doc(db, "users", uid);
+                const userSnap = await getDoc(userRef);
 
-            if (userSnap.exists()) {
-                // 既存データがある
-                const data = userSnap.data();
-                userData.username = data.username;
-                userData.clearedLevels = data.clearedLevels || [];
-                // 5級は必ずクリア済みとして扱うか、またはclearedLevelsが空なら5級
-                if (userData.clearedLevels.length === 0) {
-                    userData.maxLevel = 5;
+                if (userSnap.exists()) {
+                    // 既存データがある
+                    const data = userSnap.data();
+                    userData.username = data.username;
+                    userData.clearedLevels = data.clearedLevels || [];
+                    // 5級は必ずクリア済みとして扱うか、またはclearedLevelsが空なら5級
+                    if (userData.clearedLevels.length === 0) {
+                        userData.maxLevel = 5;
+                    } else {
+                        // クリアした級の「最小値」が最高到達級 (1級が一番上)
+                        const maxCleared = Math.min(...userData.clearedLevels);
+                        // 次の級 (より小さい数字) をアンロック。ただし1級より上はない。
+                        userData.maxLevel = Math.max(1, maxCleared - 1);
+                    }
                 } else {
-                    // クリアした級の「最小値」が最高到達級 (1級が一番上)
-                    const maxCleared = Math.min(...userData.clearedLevels);
-                    // 次の級 (より小さい数字) をアンロック。ただし1級より上はない。
-                    userData.maxLevel = Math.max(1, maxCleared - 1);
+                    // 新規ユーザーの場合、初期データを作成
+                    const newUsername = displayName || document.getElementById('register-username').value || "ゲスト";
+                    userData = {
+                        username: newUsername,
+                        clearedLevels: [], // 最初はクリアした級なし
+                        maxLevel: 5 // 5級からスタート
+                    };
+                    await setDoc(userRef, userData);
                 }
-            } else {
-                // 新規ユーザーの場合、初期データを作成
-                const newUsername = displayName || document.getElementById('register-username').value || "ゲスト";
+            } catch (error) {
+                console.error("Failed to fetch user data:", error);
+                // オフラインやネットワークエラー時は、デフォルトデータで続行
+                const newUsername = displayName || "ゲスト";
                 userData = {
                     username: newUsername,
-                    clearedLevels: [], // 最初はクリアした級なし
-                    maxLevel: 5 // 5級からスタート
+                    clearedLevels: [],
+                    maxLevel: 5
                 };
-                await setDoc(userRef, userData);
+                // エラーメッセージを表示（オプション）
+                if (error.code === 'unavailable') {
+                    console.warn('⚠️ Firestore is offline. Using default user data.');
+                }
             }
         }
 
