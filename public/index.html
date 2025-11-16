@@ -402,10 +402,21 @@ const firebaseConfig = {
         
         // 指定されたビューIDのみを表示し、他を隠す
         function showView(viewId) {
+            console.log(`showView called with: ${viewId}`);
+            const targetView = document.getElementById(viewId);
+            console.log(`Target view element:`, targetView);
+            
             document.querySelectorAll('.view').forEach(view => {
                 view.classList.remove('active');
+                console.log(`Removed active from: ${view.id}`);
             });
-            document.getElementById(viewId).classList.add('active');
+            
+            if (targetView) {
+                targetView.classList.add('active');
+                console.log(`Added active to: ${viewId}`);
+            } else {
+                console.error(`View with id '${viewId}' not found!`);
+            }
             
             // 認証状態に応じてヘッダーの表示/非表示
             const header = document.getElementById('app-header');
@@ -414,11 +425,17 @@ const firebaseConfig = {
             } else {
                 header.classList.remove('hidden');
             }
+            console.log(`showView completed for: ${viewId}`);
         }
 
         // ローディング表示を切り替え
         function showLoading(isLoading) {
-            document.getElementById('loading-overlay').classList.toggle('active', isLoading);
+            console.log(`showLoading called with: ${isLoading}`);
+            const overlay = document.getElementById('loading-overlay');
+            console.log(`Loading overlay element:`, overlay);
+            console.log(`Overlay classes before:`, overlay?.classList.toString());
+            overlay.classList.toggle('active', isLoading);
+            console.log(`Overlay classes after:`, overlay?.classList.toString());
         }
 
         // ---------------------------------------------------------------------
