@@ -639,8 +639,11 @@
                     console.log(`📡 Fetching user data (attempt ${attempt + 1}/${maxRetries})...`);
                     console.log(`   Navigator online: ${navigator.onLine}, Timestamp: ${new Date().toISOString()}`);
                     
+                    const startTime = performance.now();
                     const userRef = doc(db, "users", uid);
                     const userSnap = await getDoc(userRef);
+                    const elapsed = Math.round(performance.now() - startTime);
+                    console.log(`✅ getDoc completed in ${elapsed}ms`);
 
                     if (userSnap.exists()) {
                             console.log('✅ User document retrieved successfully');
@@ -658,6 +661,7 @@
                             userData.maxLevel = Math.max(1, maxCleared - 1);
                         }
                     } else {
+                        console.log('ℹ️ User document not found, creating new user');
                         // 新規ユーザーの場合、初期データを作成
                         const newUsername = displayName || document.getElementById('register-username')?.value || "ゲスト";
                         userData = {
@@ -665,7 +669,10 @@
                             clearedLevels: [], // 最初はクリアした級なし
                             maxLevel: 5 // 5級からスタート
                         };
+                        console.log('📝 Creating user document...');
+                        const createStart = performance.now();
                         await setDoc(userRef, userData);
+                        console.log(`✅ User document created in ${Math.round(performance.now() - createStart)}ms`);
                     }
                     
                     // 成功：既存の警告バナーがあれば削除
@@ -695,6 +702,15 @@
                         } catch(e) {
                             console.warn('⚠️ External network unreachable:', e.message);
                         }
+                        
+                        // Firestore エンドポイント直接疎通テスト
+                        try {
+                            const fsStart = performance.now();
+                            await fetch('https://firestore.googleapis.com/', { mode: 'no-cors', cache: 'no-store' });
+                            console.log(`✅ Firestore endpoint reachable (${Math.round(performance.now()-fsStart)}ms)`);
+                        } catch(e) {
+                            console.warn('⚠️ Firestore endpoint unreachable:', e.message);
+                        }
                     }
                     
                     // 2回目以降の失敗でネットワーク系(unavailable/offline)ならフォールバック未適用時に試行
@@ -716,9 +732,12 @@
                             console.error("📋 Diagnostic info:");
                             console.error("  • Network online:", navigator.onLine);
                             console.error("  • Error code:", error.code);
+                            console.error("  • Error message:", error.message);
                             console.error("  • Firebase app initialized:", !!app);
                             console.error("  • Firestore instance:", !!db);
+                            console.error("  • Auth user:", !!currentUser);
                             console.error("  • Browser:", navigator.userAgent.split(' ').pop());
+                            console.error("  • URL params:", window.location.search);
                         
                         // オフラインやネットワークエラー時は、デフォルトデータで続行
                         const newUsername = displayName || "ゲスト";
