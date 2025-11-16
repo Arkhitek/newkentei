@@ -4,8 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>建築検定</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <!-- Tailwind CSS (デザイン用) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Suppress Tailwind CDN production warning in console
+        tailwind.config = { corePlugins: { preflight: true } };
+    </script>
     <!-- jsPDF (PDF合格証の生成用) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- フォント (日本語PDF用) - jsPDFは標準で日本語に対応していないため、フォントファイルを読み込ませる（やや高度な処理） -->
