@@ -5,92 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>建築検定</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-    <!-- Tailwind CSS (デザイン用) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        // Suppress Tailwind CDN production warning in console
-        tailwind.config = { corePlugins: { preflight: true } };
-    </script>
+    <!-- Tailwind: ビルド済みCSS -->
+    <link rel="stylesheet" href="/assets/main.css" />
     <!-- jsPDF (PDF合格証の生成用) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- フォント (日本語PDF用) - jsPDFは標準で日本語に対応していないため、フォントファイルを読み込ませる（やや高度な処理） -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
 
-    <style>
-        /* 基本スタイル */
-        body {
-            font-family: 'Inter', 'Noto Sans JP', sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-        }
-        /* 画面（ビュー）の切り替え用 */
-        .view {
-            display: none; /* 基本は非表示 */
-        }
-        .view.active {
-            display: block; /* .activeがついたら表示 */
-        }
-        /* ローディング画面のスタイル */
-        #loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.8);
-            display: none; /* デフォルトは非表示 */
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            backdrop-filter: blur(5px);
-        }
-        #loading-overlay.active {
-            display: flex; /* activeクラスがある時だけ表示 */
-        }
-        /* ボタンの共通スタイル */
-        .btn {
-            @apply px-4 py-2 rounded-lg text-white font-semibold shadow-md transition-transform transform active:scale-95;
-        }
-        .btn-primary {
-            @apply bg-blue-600 hover:bg-blue-700;
-        }
-        .btn-secondary {
-            @apply bg-gray-500 hover:bg-gray-600;
-        }
-        .btn-green {
-            @apply bg-green-600 hover:bg-green-700;
-        }
-        .btn-red {
-            @apply bg-red-600 hover:bg-red-700;
-        }
-        /* 選択肢ボタン */
-        .option-btn {
-            @apply w-full text-left p-3 my-2 border-2 border-gray-300 rounded-lg transition-colors hover:bg-gray-100;
-        }
-        .option-btn.correct {
-            @apply bg-green-100 border-green-500;
-        }
-        .option-btn.incorrect {
-            @apply bg-red-100 border-red-500;
-        }
-        .option-btn:disabled {
-            @apply opacity-70 cursor-not-allowed;
-        }
-
-        /* タイマーバー */
-        #timer-bar-container {
-            width: 100%;
-            background-color: #e0e0e0;
-            border-radius: 5px;
-            overflow: hidden;
-        }
-        #timer-bar {
-            height: 10px;
-            width: 100%; /* 100%から0%へ減る */
-            background-color: #4caf50;
-            transition: width 0.1s linear; /* タイマーの更新を滑らかに */
-        }
-    </style>
+    <!-- Inline styles removed; now in /assets/main.css -->
 </head>
 <body>
 

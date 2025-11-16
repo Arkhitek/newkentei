@@ -1,0 +1,14 @@
+{
+  "name": "newkentei",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i ./src/styles/main.css -o ./public/assets/main.css --minify",
+    "dev:css": "tailwindcss -c tailwind.config.js -i ./src/styles/main.css -o ./public/assets/main.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.13",
+    "postcss": "^8.4.39",
+    "autoprefixer": "^10.4.19"
+  }
+}
