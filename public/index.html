@@ -286,10 +286,13 @@ const firebaseConfig = {
         // Firebaseの初期化
         let app, auth, db;
         try {
+            console.log("Initializing Firebase...");
             app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
             console.log("Firebase initialized successfully.");
+            console.log("Auth object:", auth);
+            console.log("DB object:", db);
             // ローカル開発（localhost/127.0.0.1）時はエミュレータへ接続
             if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
                 try {
@@ -305,6 +308,9 @@ const firebaseConfig = {
             if (firebaseConfig.apiKey === "YOUR_API_KEY") {
                 alert("Firebaseが設定されていません。HTMLファイル内の `firebaseConfig` を、ご自身のFirebaseプロジェクトのものに置き換えてください。");
             }
+            // 初期化失敗時も認証画面を表示
+            showView('auth-view');
+            showLoading(false);
         }
         
         // ---------------------------------------------------------------------
@@ -421,18 +427,23 @@ const firebaseConfig = {
 
         // 認証状態の監視（Firebase初期化失敗時にも固まらないようガード）
         if (auth) {
+            console.log("Setting up onAuthStateChanged listener...");
             onAuthStateChanged(auth, async (user) => {
+                console.log("onAuthStateChanged callback fired! User:", user);
                 if (user) {
+                    console.log("User is logged in:", user.uid);
                     currentUser = user;
                     await fetchUserData(user.uid, user.displayName);
                     setupMypage();
                     showView('mypage-view');
                     document.getElementById('user-display-name').textContent = userData.username;
                 } else {
+                    console.log("User is not logged in, showing auth view");
                     currentUser = null;
                     userData = { username: "", clearedLevels: [], maxLevel: 5 };
                     showView('auth-view');
                 }
+                console.log("Hiding loading screen...");
                 showLoading(false);
             });
         } else {
