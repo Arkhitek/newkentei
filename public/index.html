@@ -629,6 +629,75 @@
         // ---------------------------------------------------------------------
         // 認証状態の監視はFirebase初期化完了後（initializeFirebase内）で登録します。
 
+        // Firestore REST API を使用したフォールバック取得（SDK が完全に失敗した場合）
+        async function fetchUserDataViaREST(projectId, uid, idToken) {
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${uid}`;
+            console.log('🔄 Attempting Firestore REST API fallback...');
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        console.log('ℹ️ REST API: User document not found (404)');
+                        return null; // ドキュメント未存在
+                    }
+                    throw new Error(`REST API failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ REST API: User document retrieved');
+                
+                // Firestore REST API レスポンスを通常形式に変換
+                const fields = data.fields || {};
+                return {
+                    username: fields.username?.stringValue || 'ゲスト',
+                    clearedLevels: fields.clearedLevels?.arrayValue?.values?.map(v => v.integerValue) || [],
+                    maxLevel: fields.maxLevel?.integerValue || 5
+                };
+            } catch (error) {
+                console.error('❌ REST API fallback failed:', error);
+                throw error;
+            }
+        }
+
+        // Firestore REST API でドキュメント作成
+        async function createUserDataViaREST(projectId, uid, idToken, userData) {
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users?documentId=${uid}`;
+            console.log('🔄 Creating user document via REST API...');
+            try {
+                const fields = {
+                    username: { stringValue: userData.username },
+                    clearedLevels: { arrayValue: { values: [] } },
+                    maxLevel: { integerValue: userData.maxLevel }
+                };
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ fields })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`REST API create failed: ${response.status} ${response.statusText}`);
+                }
+                
+                console.log('✅ REST API: User document created');
+                return true;
+            } catch (error) {
+                console.error('❌ REST API create failed:', error);
+                throw error;
+            }
+        }
+
         // Firestoreからユーザーデータを取得（または新規作成）
         async function fetchUserData(uid, displayName) {
             const maxRetries = 5;
@@ -747,6 +816,31 @@
                             maxLevel: 5
                         };
                         
+                        // 🆕 REST API フォールバック試行
+                        if (error.code === 'unavailable') {
+                            console.warn('⚠️ SDK unavailable, attempting REST API fallback...');
+                            try {
+                                const idToken = await currentUser.getIdToken();
+                                const projectId = app.options.projectId;
+                                
+                                const restData = await fetchUserDataViaREST(projectId, uid, idToken);
+                                if (restData) {
+                                    // REST API で取得成功
+                                    userData = restData;
+                                    console.log('✅ User data retrieved via REST API fallback');
+                                    return; // 成功したので終了
+                                } else {
+                                    // ドキュメント未存在 → 作成
+                                    await createUserDataViaREST(projectId, uid, idToken, userData);
+                                    console.log('✅ User data created via REST API fallback');
+                                    return; // 成功したので終了
+                                }
+                            } catch (restError) {
+                                console.error('❌ REST API fallback also failed:', restError);
+                                // REST API も失敗 → デフォルトデータで続行
+                            }
+                        }
+                        
                         // エラーメッセージを表示（最終失敗時のみ）
                         if (error.code === 'unavailable' || error.code === 'failed-precondition') {
                             console.warn('⚠️ Firestore is offline. Using default user data.');
@@ -756,8 +850,9 @@
                                 banner.id = 'firestore-offline-banner';
                                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
                                 banner.innerHTML = '⚠️ Firestoreに接続できません。<br>' +
-                                    '<small>可能な対処: (1) ページリロード (2) ネットワーク確認 (3) ' +
-                                    '<a href="?nopersist=true" style="color:white;text-decoration:underline;">安定モード</a>で再試行 (4) ' +
+                                    '<small>Firestore SDK と REST API の両方が失敗しました。' +
+                                    '企業ファイアウォールが firestore.googleapis.com への特定のリクエストをブロックしている可能性があります。<br>' +
+                                    '対処: (1) IT部門に問い合わせ (2) 別ネットワーク (モバイルなど) で試行 (3) ' +
                                     '<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;">Firebase Console</a>確認</small>';
                                 document.body.appendChild(banner);
                             }
