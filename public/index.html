@@ -236,15 +236,30 @@
 
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
+                
+                // Firestore初期化オプション: 長時間ポーリング + オフライン永続化無効化
+                const firestoreSettings = forceLongPolling 
+                    ? { experimentalForceLongPolling: true, useFetchStreams: false }
+                    : { experimentalAutoDetectLongPolling: true };
+                
+                // オフライン永続化を無効化（IndexedDB競合回避 & 診断簡素化）
+                // URLに ?nopersist=true がある場合のみ無効化
+                const noPersist = earlyUrlParams.get('nopersist') === 'true';
+                if (noPersist) {
+                    console.log('⚠️ Offline persistence disabled via URL param');
+                    // 永続化なしでFirestore初期化（デフォルトで無効）
+                }
+                
+                db = initializeFirestore(app, firestoreSettings);
+                
                 if (forceLongPolling) {
                     console.log('💡 Forcing Firestore long polling via URL param lp=true');
-                    db = initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
                     firestoreLongPollingFallbackApplied = true;
                 } else {
-                    // 通常は自動判定を有効化（Safariや企業ネットワークでのストリーミング問題回避）
-                    db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+                    console.log('💡 Firestore using auto-detect long polling');
                 }
                 console.log("Firebase initialized successfully.");
+                console.log('🔧 Firestore settings:', firestoreSettings);
             
             // オフライン永続化を有効にする（オプション）
             // 一時的にコメントアウト（複数タブ競合を回避）
@@ -614,12 +629,14 @@
 
         // Firestoreからユーザーデータを取得（または新規作成）
         async function fetchUserData(uid, displayName) {
-            const maxRetries = 3;
-                const delays = [1000, 2000, 3000]; // exponential backoff (ms) - 延長版
+            const maxRetries = 5;
+            const delays = [1000, 2000, 4000, 8000, 15000]; // exponential backoff (ms) - 大幅延長
             
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
-                        console.log(`📡 Fetching user data (attempt ${attempt + 1}/${maxRetries})...`);
+                    console.log(`📡 Fetching user data (attempt ${attempt + 1}/${maxRetries})...`);
+                    console.log(`   Navigator online: ${navigator.onLine}, Timestamp: ${new Date().toISOString()}`);
+                    
                     const userRef = doc(db, "users", uid);
                     const userSnap = await getDoc(userRef);
 
@@ -658,17 +675,37 @@
                     return; // 成功したらreturn
                     
                 } catch (error) {
-                        console.warn(`❌ Fetch user data attempt ${attempt + 1}/${maxRetries} failed:`, error.code || error.message);
-                        console.warn('   Error details:', {
-                            code: error.code,
-                            message: error.message,
-                            name: error.name,
-                            online: navigator.onLine ? 'YES' : 'NO'
-                        });
+                    console.warn(`❌ Fetch user data attempt ${attempt + 1}/${maxRetries} failed:`, error.code || error.message);
+                    console.warn('   Error details:', {
+                        code: error.code,
+                        message: error.message,
+                        name: error.name,
+                        online: navigator.onLine ? 'YES' : 'NO',
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // ネットワーク診断: 外部疎通確認
+                    if (attempt === 0) {
+                        try {
+                            const pingStart = performance.now();
+                            await fetch('https://www.google.com/favicon.ico', { mode: 'no-cors', cache: 'no-store' });
+                            console.log(`✅ External network reachable (${Math.round(performance.now()-pingStart)}ms)`);
+                        } catch(e) {
+                            console.warn('⚠️ External network unreachable:', e.message);
+                        }
+                    }
+                    
                     // 2回目以降の失敗でネットワーク系(unavailable/offline)ならフォールバック未適用時に試行
                     const isNetworkish = (error.code === 'unavailable') || (error.message && error.message.toLowerCase().includes('offline'));
-                    if (attempt >= 1 && isNetworkish && !firestoreLongPollingFallbackApplied) {
-                        applyFirestoreLongPollingFallback('fetchUserData_retry');
+                    if (attempt >= 2 && isNetworkish && !firestoreLongPollingFallbackApplied) {
+                        console.warn('🔄 Attempting fallback: add ?nopersist=true to URL and retry');
+                        const currentUrl = new URL(window.location.href);
+                        if (!currentUrl.searchParams.has('nopersist')) {
+                            currentUrl.searchParams.set('nopersist', 'true');
+                            console.log('💡 Reloading with offline persistence disabled...');
+                            setTimeout(() => { location.replace(currentUrl.toString()); }, 100);
+                            return; // 早期リターンでリロード待機
+                        }
                     }
                     
                     // 最後のリトライ失敗時のみフォールバック
@@ -697,7 +734,10 @@
                                 const banner = document.createElement('div');
                                 banner.id = 'firestore-offline-banner';
                                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
-                                banner.innerHTML = '⚠️ Firestoreに接続できません。ページをリロードするか、<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;font-weight:bold;">Firebase Console</a>でFirestore Databaseを確認してください。';
+                                banner.innerHTML = '⚠️ Firestoreに接続できません。<br>' +
+                                    '<small>可能な対処: (1) ページリロード (2) ネットワーク確認 (3) ' +
+                                    '<a href="?lp=true&nopersist=true" style="color:white;text-decoration:underline;">別モード</a>で再試行 (4) ' +
+                                    '<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;">Firebase Console</a>確認</small>';
                                 document.body.appendChild(banner);
                             }
                         } else {
