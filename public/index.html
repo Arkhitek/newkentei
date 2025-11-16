@@ -328,28 +328,32 @@
             } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
                 console.log('💡 Running on localhost but using PRODUCTION Firebase.');
                 console.log('💡 To use emulators, add ?emulator=true to URL');
-                console.log('🔍 Checking Firestore connection...');
-                
-                // 接続テスト
-                setTimeout(async () => {
-                    try {
-                        const testDoc = await getDoc(doc(db, '_test', 'connection'));
-                        console.log('✅ Firestore connection successful');
-                    } catch (err) {
-                        console.error('❌ Firestore connection failed:', err);
-                        console.error('📋 Please check:');
-                        console.error('  1. Firebase Console > Firestore Database is created');
-                        console.error('  2. Firestore Rules allow read/write');
-                        console.error('  3. No browser extensions blocking requests');
-                        console.error('  4. Network/firewall not blocking firestore.googleapis.com');
-                    }
-                }, 2000);
             }
 
             // 認証状態の監視（初期化後に登録）
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     console.log("✅ User logged in:", user.email || user.uid);
+                    
+                    // Firestore接続を待機(最大5秒)
+                    console.log('🔍 Waiting for Firestore connection...');
+                    let connectionReady = false;
+                    for (let i = 0; i < 10; i++) {
+                        try {
+                            await getDoc(doc(db, '_connection_test', 'test'));
+                            connectionReady = true;
+                            console.log('✅ Firestore connection established');
+                            break;
+                        } catch (err) {
+                            console.log(`⏳ Connection attempt ${i + 1}/10...`);
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    }
+                    
+                    if (!connectionReady) {
+                        console.warn('⚠️ Firestore connection timeout, proceeding anyway...');
+                    }
+                    
                     currentUser = user;
                     await fetchUserData(user.uid, user.displayName);
                     setupMypage();
@@ -495,14 +499,16 @@
         // Firestoreからユーザーデータを取得（または新規作成）
         async function fetchUserData(uid, displayName) {
             const maxRetries = 3;
-            const delays = [300, 800, 1500]; // exponential backoff (ms)
+                const delays = [1000, 2000, 3000]; // exponential backoff (ms) - 延長版
             
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
+                        console.log(`📡 Fetching user data (attempt ${attempt + 1}/${maxRetries})...`);
                     const userRef = doc(db, "users", uid);
                     const userSnap = await getDoc(userRef);
 
                     if (userSnap.exists()) {
+                            console.log('✅ User document retrieved successfully');
                         // 既存データがある
                         const data = userSnap.data();
                         userData.username = data.username;
@@ -536,11 +542,24 @@
                     return; // 成功したらreturn
                     
                 } catch (error) {
-                    console.warn(`Fetch user data attempt ${attempt + 1}/${maxRetries} failed:`, error.code || error.message);
+                        console.warn(`❌ Fetch user data attempt ${attempt + 1}/${maxRetries} failed:`, error.code || error.message);
+                        console.warn('   Error details:', {
+                            code: error.code,
+                            message: error.message,
+                            name: error.name,
+                            online: navigator.onLine ? 'YES' : 'NO'
+                        });
                     
                     // 最後のリトライ失敗時のみフォールバック
                     if (attempt === maxRetries - 1) {
-                        console.error("Failed to fetch user data after retries:", error);
+                            console.error("❌ Failed to fetch user data after all retries");
+                            console.error("📋 Diagnostic info:");
+                            console.error("  • Network online:", navigator.onLine);
+                            console.error("  • Error code:", error.code);
+                            console.error("  • Firebase app initialized:", !!app);
+                            console.error("  • Firestore instance:", !!db);
+                            console.error("  • Browser:", navigator.userAgent.split(' ').pop());
+                        
                         // オフラインやネットワークエラー時は、デフォルトデータで続行
                         const newUsername = displayName || "ゲスト";
                         userData = {
@@ -560,8 +579,11 @@
                                 banner.innerHTML = '⚠️ Firestoreに接続できません。ページをリロードするか、<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;font-weight:bold;">Firebase Console</a>でFirestore Databaseを確認してください。';
                                 document.body.appendChild(banner);
                             }
+                        } else {
+                            console.error("⚠️ Unexpected error type:", error.code);
                         }
                     } else {
+                        console.log(`⏳ Waiting ${delays[attempt]}ms before retry...`);
                         // リトライ前に待機
                         await new Promise(resolve => setTimeout(resolve, delays[attempt]));
                     }
