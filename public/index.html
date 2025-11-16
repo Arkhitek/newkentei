@@ -295,6 +295,8 @@
                 console.log("Firebase initialized successfully.");
             
             // オフライン永続化を有効にする（オプション）
+            // 一時的にコメントアウト（複数タブ競合を回避）
+            /*
             try {
                 await enableIndexedDbPersistence(db);
                 console.log("✅ Firestore offline persistence enabled");
@@ -307,6 +309,7 @@
                     console.warn("⚠️ Persistence error:", err);
                 }
             }
+            */
             
             // ローカル開発時のエミュレータ接続（URLパラメータで制御可能）
             const urlParams = new URLSearchParams(window.location.search);
@@ -489,71 +492,79 @@
         // ---------------------------------------------------------------------
         // 認証状態の監視はFirebase初期化完了後（initializeFirebase内）で登録します。
 
-        // 念のためのフォールバック（ネットワーク不調など）
-        // Firebase認証の初期化を待つため、3秒後に確認
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                const overlay = document.getElementById('loading-overlay');
-                if (overlay && overlay.classList.contains('active')) {
-                    console.warn('Loader still active 3s after window load. Forcing hide.');
-                    showLoading(false);
-                    // 認証画面へ誘導（他のビューが設定されていない場合）
-                    const anyActive = document.querySelector('.view.active');
-                    if (!anyActive || anyActive.id === 'loading-overlay') {
-                        showView('auth-view');
-                    }
-                }
-            }, 3000);
-        });
-
         // Firestoreからユーザーデータを取得（または新規作成）
         async function fetchUserData(uid, displayName) {
-            try {
-                const userRef = doc(db, "users", uid);
-                const userSnap = await getDoc(userRef);
+            const maxRetries = 3;
+            const delays = [300, 800, 1500]; // exponential backoff (ms)
+            
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const userRef = doc(db, "users", uid);
+                    const userSnap = await getDoc(userRef);
 
-                if (userSnap.exists()) {
-                    // 既存データがある
-                    const data = userSnap.data();
-                    userData.username = data.username;
-                    userData.clearedLevels = data.clearedLevels || [];
-                    // 5級は必ずクリア済みとして扱うか、またはclearedLevelsが空なら5級
-                    if (userData.clearedLevels.length === 0) {
-                        userData.maxLevel = 5;
+                    if (userSnap.exists()) {
+                        // 既存データがある
+                        const data = userSnap.data();
+                        userData.username = data.username;
+                        userData.clearedLevels = data.clearedLevels || [];
+                        // 5級は必ずクリア済みとして扱うか、またはclearedLevelsが空なら5級
+                        if (userData.clearedLevels.length === 0) {
+                            userData.maxLevel = 5;
+                        } else {
+                            // クリアした級の「最小値」が最高到達級 (1級が一番上)
+                            const maxCleared = Math.min(...userData.clearedLevels);
+                            // 次の級 (より小さい数字) をアンロック。ただし1級より上はない。
+                            userData.maxLevel = Math.max(1, maxCleared - 1);
+                        }
                     } else {
-                        // クリアした級の「最小値」が最高到達級 (1級が一番上)
-                        const maxCleared = Math.min(...userData.clearedLevels);
-                        // 次の級 (より小さい数字) をアンロック。ただし1級より上はない。
-                        userData.maxLevel = Math.max(1, maxCleared - 1);
+                        // 新規ユーザーの場合、初期データを作成
+                        const newUsername = displayName || document.getElementById('register-username')?.value || "ゲスト";
+                        userData = {
+                            username: newUsername,
+                            clearedLevels: [], // 最初はクリアした級なし
+                            maxLevel: 5 // 5級からスタート
+                        };
+                        await setDoc(userRef, userData);
                     }
-                } else {
-                    // 新規ユーザーの場合、初期データを作成
-                    const newUsername = displayName || document.getElementById('register-username').value || "ゲスト";
-                    userData = {
-                        username: newUsername,
-                        clearedLevels: [], // 最初はクリアした級なし
-                        maxLevel: 5 // 5級からスタート
-                    };
-                    await setDoc(userRef, userData);
-                }
-            } catch (error) {
-                console.error("Failed to fetch user data:", error);
-                // オフラインやネットワークエラー時は、デフォルトデータで続行
-                const newUsername = displayName || "ゲスト";
-                userData = {
-                    username: newUsername,
-                    clearedLevels: [],
-                    maxLevel: 5
-                };
-                // エラーメッセージを表示（オプション）
-                if (error.code === 'unavailable') {
-                    console.warn('⚠️ Firestore is offline. Using default user data.');
-                    // ユーザーに通知
-                    const banner = document.createElement('div');
-                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
-                    banner.innerHTML = '⚠️ Firestoreに接続できません。<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;font-weight:bold;">Firebase Console</a>でFirestore Databaseを作成してください。';
-                    document.body.appendChild(banner);
-                    setTimeout(() => banner.remove(), 10000);
+                    
+                    // 成功：既存の警告バナーがあれば削除
+                    const existingBanner = document.getElementById('firestore-offline-banner');
+                    if (existingBanner) {
+                        existingBanner.remove();
+                        console.log('✅ Firestore reconnected, banner removed');
+                    }
+                    return; // 成功したらreturn
+                    
+                } catch (error) {
+                    console.warn(`Fetch user data attempt ${attempt + 1}/${maxRetries} failed:`, error.code || error.message);
+                    
+                    // 最後のリトライ失敗時のみフォールバック
+                    if (attempt === maxRetries - 1) {
+                        console.error("Failed to fetch user data after retries:", error);
+                        // オフラインやネットワークエラー時は、デフォルトデータで続行
+                        const newUsername = displayName || "ゲスト";
+                        userData = {
+                            username: newUsername,
+                            clearedLevels: [],
+                            maxLevel: 5
+                        };
+                        
+                        // エラーメッセージを表示（最終失敗時のみ）
+                        if (error.code === 'unavailable' || error.code === 'failed-precondition') {
+                            console.warn('⚠️ Firestore is offline. Using default user data.');
+                            // 既存バナーがなければ表示
+                            if (!document.getElementById('firestore-offline-banner')) {
+                                const banner = document.createElement('div');
+                                banner.id = 'firestore-offline-banner';
+                                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
+                                banner.innerHTML = '⚠️ Firestoreに接続できません。ページをリロードするか、<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;font-weight:bold;">Firebase Console</a>でFirestore Databaseを確認してください。';
+                                document.body.appendChild(banner);
+                            }
+                        }
+                    } else {
+                        // リトライ前に待機
+                        await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+                    }
                 }
             }
         }
