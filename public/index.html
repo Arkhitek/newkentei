@@ -245,7 +245,8 @@
             createUserWithEmailAndPassword, 
             updateProfile,
             onAuthStateChanged, 
-            signOut 
+            signOut,
+            connectAuthEmulator
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -256,7 +257,9 @@
             addDoc,
             query,
             getDocs,
-            orderBy // ランキング用
+            orderBy, // ランキング用
+            where,
+            connectFirestoreEmulator
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ---------------------------------------------------------------------
@@ -282,6 +285,16 @@ const firebaseConfig = {
             auth = getAuth(app);
             db = getFirestore(app);
             console.log("Firebase initialized successfully.");
+            // ローカル開発（localhost/127.0.0.1）時はエミュレータへ接続
+            if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                try {
+                    connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+                    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+                    console.log('Connected to Firebase Emulators (Auth:9099, Firestore:8080).');
+                } catch (e) {
+                    console.warn('Failed to connect emulators:', e);
+                }
+            }
         } catch (error) {
             console.error("Firebase initialization failed:", error);
             if (firebaseConfig.apiKey === "YOUR_API_KEY") {
@@ -401,26 +414,42 @@ const firebaseConfig = {
         // 認証関連の処理
         // ---------------------------------------------------------------------
 
-        // 認証状態の監視
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // ユーザーがログインしている
-                currentUser = user;
-                // Firestoreからユーザーデータを取得
-                await fetchUserData(user.uid, user.displayName);
-                // マイページを表示
-                setupMypage();
-                showView('mypage-view');
-                document.getElementById('user-display-name').textContent = userData.username;
+        // 認証状態の監視（Firebase初期化失敗時にも固まらないようガード）
+        if (auth) {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    currentUser = user;
+                    await fetchUserData(user.uid, user.displayName);
+                    setupMypage();
+                    showView('mypage-view');
+                    document.getElementById('user-display-name').textContent = userData.username;
+                } else {
+                    currentUser = null;
+                    userData = { username: "", clearedLevels: [], maxLevel: 5 };
+                    showView('auth-view');
+                }
+                showLoading(false);
+            });
+        } else {
+            console.error("Firebase Auth is not initialized. Falling back to auth view.");
+            // フォールバック：認証画面を表示してローディングを外す
+            showView('auth-view');
+            showLoading(false);
+        }
 
-            } else {
-                // ログアウトしている
-                currentUser = null;
-                userData = { username: "", clearedLevels: [], maxLevel: 5 }; // データリセット
-                // 認証画面を表示
-                showView('auth-view');
+        // 念のためのフォールバック（ネットワーク不調など）
+        window.addEventListener('load', () => {
+            // 既に非表示なら何もしない
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay && overlay.classList.contains('active')) {
+                console.warn('Loader still active after window load. Forcing hide.');
+                showLoading(false);
+                // 認証画面へ誘導（他のビューが設定されていない場合）
+                const anyActive = document.querySelector('.view.active');
+                if (!anyActive || anyActive.id === 'loading-overlay') {
+                    showView('auth-view');
+                }
             }
-            showLoading(false); // 最初のローディングを解除
         });
 
         // Firestoreからユーザーデータを取得（または新規作成）
