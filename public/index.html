@@ -233,27 +233,29 @@
                 // URLパラメータ取得（フォールバック強制等に利用）
                 const earlyUrlParams = new URLSearchParams(window.location.search);
                 const forceLongPolling = earlyUrlParams.get('lp') === 'true'; // ?lp=true で強制
+                const noPersist = earlyUrlParams.get('nopersist') === 'true';
+                
+                // nopersist パラメータがある場合も長時間ポーリングを強制（トラブルシューティング用）
+                const shouldForceLongPolling = forceLongPolling || noPersist;
 
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 
                 // Firestore初期化オプション: 長時間ポーリング + オフライン永続化無効化
-                const firestoreSettings = forceLongPolling 
+                const firestoreSettings = shouldForceLongPolling 
                     ? { experimentalForceLongPolling: true, useFetchStreams: false }
                     : { experimentalAutoDetectLongPolling: true };
                 
                 // オフライン永続化を無効化（IndexedDB競合回避 & 診断簡素化）
-                // URLに ?nopersist=true がある場合のみ無効化
-                const noPersist = earlyUrlParams.get('nopersist') === 'true';
                 if (noPersist) {
                     console.log('⚠️ Offline persistence disabled via URL param');
-                    // 永続化なしでFirestore初期化（デフォルトで無効）
+                    console.log('💡 Also forcing long polling for maximum compatibility');
                 }
                 
                 db = initializeFirestore(app, firestoreSettings);
                 
-                if (forceLongPolling) {
-                    console.log('💡 Forcing Firestore long polling via URL param lp=true');
+                if (shouldForceLongPolling) {
+                    console.log('💡 Forcing Firestore long polling (lp=true or nopersist=true)');
                     firestoreLongPollingFallbackApplied = true;
                 } else {
                     console.log('💡 Firestore using auto-detect long polling');
@@ -698,11 +700,11 @@
                     // 2回目以降の失敗でネットワーク系(unavailable/offline)ならフォールバック未適用時に試行
                     const isNetworkish = (error.code === 'unavailable') || (error.message && error.message.toLowerCase().includes('offline'));
                     if (attempt >= 2 && isNetworkish && !firestoreLongPollingFallbackApplied) {
-                        console.warn('🔄 Attempting fallback: add ?nopersist=true to URL and retry');
+                        console.warn('🔄 Attempting fallback: reload with ?nopersist=true (forces long polling)');
                         const currentUrl = new URL(window.location.href);
-                        if (!currentUrl.searchParams.has('nopersist')) {
+                        if (!currentUrl.searchParams.has('nopersist') && !currentUrl.searchParams.has('lp')) {
                             currentUrl.searchParams.set('nopersist', 'true');
-                            console.log('💡 Reloading with offline persistence disabled...');
+                            console.log('💡 Reloading with nopersist=true (includes long polling + no persistence)...');
                             setTimeout(() => { location.replace(currentUrl.toString()); }, 100);
                             return; // 早期リターンでリロード待機
                         }
@@ -736,7 +738,7 @@
                                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:white;padding:12px;text-align:center;z-index:10000;font-size:14px;';
                                 banner.innerHTML = '⚠️ Firestoreに接続できません。<br>' +
                                     '<small>可能な対処: (1) ページリロード (2) ネットワーク確認 (3) ' +
-                                    '<a href="?lp=true&nopersist=true" style="color:white;text-decoration:underline;">別モード</a>で再試行 (4) ' +
+                                    '<a href="?nopersist=true" style="color:white;text-decoration:underline;">安定モード</a>で再試行 (4) ' +
                                     '<a href="https://console.firebase.google.com" target="_blank" style="color:white;text-decoration:underline;">Firebase Console</a>確認</small>';
                                 document.body.appendChild(banner);
                             }
